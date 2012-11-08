@@ -46,3 +46,10 @@ The source files use Unicode characters (e.g. \tau, \Gamma), so your editor must
 Windows, Emacs occasionally opens a file with the incorrect encoding, which can be fixed with
 
     M-x revert-buffer-with-coding-system UTF-8
+
+License
+-------
+This code is licensed under Matt Might's aptly-named CRAPL.  The license is provided in CRAPL-LICENSE.txt in this repository.
+For more information on the CRAPL, see Matt Might's article:
+
+<center>http://matt.might.net/articles/crapl/</center>
