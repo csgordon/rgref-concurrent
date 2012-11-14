@@ -234,8 +234,11 @@ Proof. unfold precise_rel; intros. induction H1. eapply prepended. rewrite <- H0
  Qed.
 Hint Resolve precise_prepend.
 
-(** TODO: same issue with relation folding for list containers *)
-Instance lst_cont_fold {P Q}: rel_fold (@list_container P Q). Admitted.
+(* Folding anything into this list container is a no-op: the head already points to a rgrList' with guarantee list_imm,
+   so no further restriction is necessary / possible. *)
+Instance lst_cont_fold {P Q}: rel_fold (@list_container P Q) := {
+  rgfold := (fun R => fun G => @list_container P Q)
+}.
 
 Require Import Coq.Program.Tactics.
 Program Definition newList { Γ P}`{precise_pred P} : rgref Γ (ref{(@list_container P any)|any}[prepend,prepend]) Γ :=
@@ -255,11 +258,10 @@ Program Definition prefix { Γ }{P:hpred rgrList'}`{precise_pred P} (n:nat) (l:r
   x <- @cons _ P any _ n (@head _ _ (!l)) ({{{@head _ _ (!l)}}});
   [l]:= (mkList P any (@convert_P _ _ ((plumb P) ⊓ P ⊓ any) _ _ _ _ _ _ x)).
 Next Obligation. compute. auto. Qed.
-Next Obligation. Admitted. (** Need to define rgfold for rglists *)
+Next Obligation. compute. auto. Qed.
 Next Obligation. compute; auto. Qed.
-Next Obligation. compute; auto. Qed. (** This explicit solution shouldn't be necessary; the local tactic above includes 'try firstorder' first thing! *)
+Next Obligation. firstorder. Qed. (** This explicit solution shouldn't be necessary; the local tactic above includes 'try firstorder' first thing! *)
 Next Obligation. firstorder. Qed.
-Next Obligation. compute; auto. Qed.
 Next Obligation. firstorder. Qed.
 Next Obligation.
   eapply prepended.
