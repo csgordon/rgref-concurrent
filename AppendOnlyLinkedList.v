@@ -81,4 +81,10 @@ Program Definition alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
                         end))) l.
 Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed. 
 
+Program Example test1 {Γ} : rgref Γ unit Γ :=
+  l <- Alloc None;
+  u <- alist_append 3 l;
+  v <- alist_append 4 l;
+  alist_append 5 l.
+
 End AppendOnlyLinkedList.
