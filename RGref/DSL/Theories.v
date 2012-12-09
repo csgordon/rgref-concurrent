@@ -52,6 +52,32 @@ Qed.
 
 Hint Resolve agnostic_pred_stable.
 
+(** *** Option types *)
+Inductive optset (A:Set) : hrel (option A) :=
+  | optset_nop : forall (o:option A) h h', optset A o o h h'
+  | optset_set : forall (a:A) h h', optset A None (Some a) h h'.
+Inductive option_reach : forall (A:Set)`(ImmediateReachability A) {T:Set}{P R G} (p:ref{T|P}[R,G]) (ao:option A), Prop :=
+  | opt_reach_some : forall (A:Set)(a:A)`(ImmediateReachability A) {T:Set}{P R G} (p:ref{T|P}[R,G]),
+                         imm_reachable_from_in p a ->
+                         option_reach A _ p (Some a).
+Instance reach_option {A:Set}`{ImmediateReachability A} : ImmediateReachability (option A) :=
+  { imm_reachable_from_in := fun T P R G p oa => option_reach A _ p oa }.
+Lemma optset_precise : forall A `(ImmediateReachability A), precise_rel (optset A).
+Proof. compute. intros. inversion H2; subst; constructor. Qed.
+Hint Resolve optset_precise.
+(* TODO: Contains instance for options *)
+Instance option_fold {A:Set}`{rel_fold A} : rel_fold (option A) :=
+  { rgfold := fun R G => option (rgfold havoc (fun a a' h h' => G (Some a) (Some a') h h')) }.
+Lemma optset_refl : forall (A:Set), hreflexive (optset A).
+Proof. compute; intuition; constructor. Qed.
+Hint Resolve optset_refl.
+Inductive opt_contains {A:Set}`{Containment A} : hrel (option A) -> Prop :=
+  | some_contains : forall RR (h h':heap),
+                      contains (fun a a' h h' => RR (Some a) (Some a') h h') ->
+                      opt_contains RR.
+Instance option_contains {A:Set}`{Containment A} : Containment (option A) :=
+  { contains := opt_contains }.
+
 (** ** Combinator Lemmas *)
 
 Lemma pred_and_stable : forall (A:Set) (P:hpred A) Q R, stable P R -> stable Q R -> stable (P ⊓ Q) R.
