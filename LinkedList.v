@@ -115,9 +115,6 @@ Obligation Tactic :=
 
 Definition list P Q := ref{rgrList' | (plumb P) ⊓ P ⊓ Q}[list_imm,list_imm].
 
-(** For now we need an explicit subtyping operator *)
-Axiom convert_P : forall {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A},(forall v h, P v h -> P' v h) -> precise_pred P' -> stable P' R -> ref{A|P}[R,G] -> ref{A|P'}[R,G].
-
 Inductive rgr_reach : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (a:rgrList'), Prop :=
   | rgr_reach_tail : forall T P R G p n, rgr_reach p (rgrl_cons' T P R G n p).
 (*  | rgr_reach_trans : forall T P R G (p:ref{T|P}[R,G]) P' R' G' h n tl, 
@@ -193,8 +190,6 @@ Next Obligation. firstorder. eapply plumb_stable; eauto. firstorder. Qed.
 Next Obligation. constructor. Qed. (** And now there's another that should be auto-solved *)
 Next Obligation. firstorder. eapply plumb_precise; eauto. firstorder. Qed. (** Ditto! *)
 
-Axiom conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x, h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
-
 (** Here (and for nil) we use alloc', which strengthens the refinement on the returned value to include
     equality between the allocated value and the allocation.  This is how information like that the
     result of cons is a cons cell is communicated across statements. *)
@@ -247,8 +242,6 @@ Program Definition newList { Γ P}`{precise_pred P} : rgref Γ (ref{(@list_conta
 Next Obligation. Admitted. (** Not sure where to pull the assumption that P is true of nil and an arbitrary heap *)
 Next Obligation. firstorder. Qed. (** This explicit solution shouldn't be necessary; the local tactic above includes 'try firstorder' first thing! *)
 
-Axiom type_based_nonaliasing : forall h τ σ P R G Q R' G' `(a:ref{τ|P}[R,G]) `(b:ref{σ|Q}[R',G']) v, τ<>σ ->
-  (heap_write a v h)[b] = h[b].
 Check @convert_P.
 Require Import Coq.Logic.ProofIrrelevance.
 Program Definition prefix { Γ }{P:hpred rgrList'}`{precise_pred P} (n:nat) (l:ref{list_container|any}[prepend,prepend]) 

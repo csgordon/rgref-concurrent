@@ -68,6 +68,9 @@ Axiom heap_lookup2 : forall {A P R G} (h:heap) (r:ref{A|P}[R,G]), P (h[r]) h.
 Axiom ptr_eq : forall {A A' P P' R R' G G'}, ref A P R G -> ref A' P' R' G' -> Prop.
 Infix "≡" := (ptr_eq) (at level 80).
 
+Axiom type_based_nonaliasing : forall h τ σ P R G Q R' G' `(a:ref{τ|P}[R,G]) `(b:ref{σ|Q}[R',G']) v, τ<>σ ->
+  (heap_write a v h)[b] = h[b].
+
 (** ** Reachability
     We need to define what is reachable from a given type in order to define precise prediates and relations. *)
 Class ImmediateReachability (A:Set) := {
@@ -240,3 +243,8 @@ Global Instance bool_pure : pure_type bool.
 Global Instance unit_pure : pure_type unit.
 Global Instance list_pure `{A:Set,PA:pure_type A} : pure_type (list A).
 
+(** ** Additional Axioms
+    Things like heap dereference being the same between converted and unconverted references, etc. *)
+(** For now we need an explicit subtyping operator *)
+Axiom convert_P : forall {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A},(forall v h, P v h -> P' v h) -> precise_pred P' -> stable P' R -> ref{A|P}[R,G] -> ref{A|P'}[R,G].
+Axiom conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x, h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
