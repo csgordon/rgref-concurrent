@@ -41,9 +41,11 @@ Obligation Tactic :=
 
 Require Import Coq.Program.Tactics.
 
-(* TODO: This is only a first cut, and doesn't allow polymorphic recursion.  Eventually we'll need to support
-   polymorphic recursion and functions with more curried arguments. *)
+(* TODO: This is only a first cut, and doesn't allow polymorphic recursion. *)
 Axiom RGFix : forall { Γ Γ' }(t t':Set), ((t -> rgref Γ t' Γ') -> (t -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
+Axiom RGFix2 : forall { Γ Γ' }(t t2 t':Set), ((t -> t2 -> rgref Γ t' Γ') -> (t -> t2 -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
+Axiom RGFix3 : forall { Γ Γ' }(t t2 t3 t':Set), ((t -> t2 -> t3 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
+Axiom RGFix4 : forall { Γ Γ' }(t t2 t3 t4 t':Set), ((t -> t2 -> t3 -> t4 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> t4 -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
 
 Check @rgfold.
 (* TODO: Contains instance for options *)
