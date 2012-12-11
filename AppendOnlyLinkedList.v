@@ -26,16 +26,16 @@ Obligation Tactic :=
 
 Require Import Coq.Program.Tactics.
 
-Instance appList_fold : rel_fold appList :=
+Global Instance appList_fold : rel_fold appList :=
   { rgfold := fun R G => appList }. (* TODO: This is technically unsound - need to recursively rewrite tail pointer relations... *)
 
-Instance appList_contains : Containment appList. Admitted.
+Global Instance appList_contains : Containment appList. Admitted.
  (* want something like { contains := fun RR => RR = (optset ...) }. but need to handle cons/option shifting *)
 
 Print ImmediateReachability.
 Inductive applist_reachability : forall (T:Set) (P:hpred T) (R G:hrel T), ref{T|P}[R,G] -> appList -> Prop :=
   | tail_reach : forall n tl, applist_reachability (option appList) any (optset appList) (optset appList) tl (rcons n tl).
-Instance applist_reachable : ImmediateReachability appList :=
+Global Instance applist_reachable : ImmediateReachability appList :=
   { imm_reachable_from_in := applist_reachability }.
 
 Program Definition alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=

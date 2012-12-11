@@ -1,5 +1,7 @@
 Require Import RGref.DSL.DSL.
 Require Import AppendOnlyLinkedList.
+Require Import Coq.Program.Equality.
+Require Import Coq.Program.Tactics.
 
 (** * Unsoundness Examples Requiring Coq Extensions to Fix
     This file contains examples of known unsoundnesses in the RGref implementation.  Not arbitrary
@@ -19,15 +21,15 @@ Program Definition BAD_alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
              (fun tl => match !tl with
                           | None => ( f <- Alloc None;
                                       u <- [ tl ]:= (Some (rcons n f));
-                                      x <- Alloc None;
-                                      [ tl ]:= (Some (rcons (S n) x))
+                                      rgret u
+                                      (*x <- Alloc None;
+                                      [ tl ]:= (Some (rcons (S n) x))*)
                                     )
                           | Some l' => (match l' with
                                           | rcons n' tl' => rec tl'
                                         end)
                         end))) l.
-Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed. 
-Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed. 
+Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed.  
 (** The specific issue with this example is that using a match inside a Program Definition
     adds an equality proof to the context for goals inside the match clauses.  In this case,
     in the None branch of the match, the assumption << !tl=None >> is added to the context.
