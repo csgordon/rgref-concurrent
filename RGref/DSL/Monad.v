@@ -63,7 +63,6 @@ Axiom dropvar : forall {Γ} (v:var) (t:Set) (tm:tymember v t Γ), rgref Γ unit 
                    G (!l) e h (heap_write l e h)}
                  {pres:(forall h (l:ref{A|P}[R,G]), P (!l) h -> P e (heap_write l e h))}
                  , rgref Γ unit Γ.*)
-(* TODO: Figure out how to model environments in a way that doesn't require projecting out of a sigT into Set, which apparently is prohibited. *)
 Program Axiom write' : forall {Γ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:A)
                       (meta_x_deref:A) (meta_e_fold:A) 
                       (** These meta args are notationally expanded x and e using the identity relation folding *)
@@ -75,7 +74,36 @@ Program Axiom write' : forall {Γ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive 
 Notation "[ x ]:= e" := (@write' _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at level 70).
 (** TODO: heap writes that update the predicate.  Because of the monadic style, we'll actually
    need a new axiom and syntax support for this, to rebind the variable at the strengthened type *)
-(* TODO: Figure out how to model environments in a way that doesn't require projecting out of a sigT into Set, which apparently is prohibited. *)
+
+(** Interactions between pure terms and monadic terms *)
+(** valueOf should be treated as roughly a more serious version of unsafePerformIO;
+    it's a coreturn like the latter, but should actually never be written in user programs! *)
+Program Axiom valueOf : forall {Γ Γ'}{A:Set}, envlist Γ -> heap -> rgref Γ A Γ' -> A.
+(** pureApp is essentially based on valueOf... Technically this is weaker than what's in the paper,
+    since dependently-typed pure functions are allowed if the instantiation of the range type is
+    closed, but right now I don't need the expressiveness and can't figure out how to properly treat the
+    dependency in binding B. 
+    
+    I supposed technically this makes rgref an indexed functor (in the Haskell sense), and with a
+    small tweak, an applicative functor if we need it. *)
+Program Axiom pureApp : forall {Γ Γ'}{A:Set}`{splits A A A}{B:Set}, (A->B) -> rgref Γ A Γ' -> rgref Γ B Γ'.
+
+(** This is just strong enough to get the race-free counter example to go through... Need to strengthen this at some point. *)
+Axiom weak_pureApp_morphism :
+  forall Γ Γ' τ env h (e:rgref Γ τ Γ') (sp:splits τ τ τ) (f:τ->τ) (P:τ->τ->Prop),
+    (forall v:τ, P v (f v)) ->
+    P (valueOf Γ Γ' τ env h e) (valueOf Γ Γ' τ env h (pureApp Γ Γ' τ sp τ f e)).
+
+(* Impure read expression (using a direct ref value) *)
+Program Axiom read_imp : forall {Γ}{A B:Set}`{rel_fold A}{P R G}`{hreflexive G}`{rgfold R G = B}(x:ref{A|P}[R,G]), rgref Γ B Γ.
+
+(* Writing with an impure source expression (and direct ref value) *)
+Program Axiom write_imp_exp : forall {Γ Γ'}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:rgref Γ A Γ')
+                              (meta_x_deref:rgref Γ A Γ') (meta_e_fold:rgref Γ A Γ')
+                              {guar:forall h env, G (valueOf _ _ _ env h meta_x_deref) (valueOf _ _ _ env h e) h (heap_write x (valueOf _ _ _ env h e) h)}
+                              {pres:(forall h env, P (valueOf _ _ _ env h meta_x_deref) h -> P (valueOf _ _ _ env h meta_e_fold) (heap_write x (valueOf _ _ _ env h meta_e_fold) h))}
+                              , rgref Γ unit Γ'.
+Notation "[[ x ]]:= e" := (@write_imp_exp _ _ _ _ _ _ _ _ x e ({{{read_imp x}}}) ({{{e}}}) _ _) (at level 70).
 
 Definition locally_const {A:Set} (R:hrel A) := forall a a' h h', R a a' h h' -> a=a'.
 
