@@ -7,16 +7,17 @@ Require Import MonotonicCounter.
 
 (** * A Prepend-only Linked List
     The most natural way to describe this structure uses
-    induction-recursion, the simultaneous definition of a data type
-    and a function or predicate type over that datatype. 
+    mutual inductive types where the first (list structure) indexes
+    the second (relation on lists).
     Unfortunately, Coq lacks direct support for this feature.
-    (Note: in a pure-functional setting, this is rarely an
-    issue because maintaining an external predicate over a
-    data structure usually isn't much more effort than the
-    inductive-recursive definition.)
+    (Agda implements it, but lacks tactics and an equivalent of the
+    Program extension that we use heavily.)
 
     This structure is based on the common-in-folklore encoding of
-    induction-recursion into Coq.  A good reference (with a couple
+    induction-recursion (mutual definition of a datatype and a
+    recursive function over that datatype) into Coq, which it turns
+    out works for simulating the extended mutual inductive definitions
+    we need as well.  A good reference (with a couple
     typos) is Venanzio Capretta's unpublished draft:
     "A Polymorphic Representation of Induction-Recursion"
     http://www.cs.ru.nl/~venanzio/publications/induction_recursion.pdf (Retrieved 9/11/12)
