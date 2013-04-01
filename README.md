@@ -17,7 +17,9 @@ rely relation, then it is true in the second state as well), then it is safe to 
 predicate holds in general because the actions possible through any other alias are subsumed by
 the rely.
 
-This is not the primary documentation; more information is available upon request.
+This is not the primary documentation; see our PLDI'13 paper, ``Rely-Guarantee References for
+Refinement Types Over Aliased Mutable Data'' or our technical report of the same name for more
+information.
 
 Compiling
 ---------
