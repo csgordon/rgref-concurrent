@@ -54,27 +54,41 @@ Section FieldDemo.
   Definition Count2nat (n : DFieldTypes Count) : nat. compute; assumption. Defined.
   Definition bool2DField (b : bool) : DFieldTypes Flag. compute; assumption. Defined.
   Print nat2DField'.
-  Instance DAccess : FieldAccess D DFieldTypes.
-(* Ideally we'd just directly define, but Coq's pattern matching is weak, so we'll use the refine tactic. :=
-  { fieldOf := fun obj x => match obj return (DFieldTypes x) with (mkD n b) =>
-                              match x as x return _ with
-                              | F1 _ => _
-                              | FS _ _ => _
+  Definition getCount (d:D) := match d with (mkD n b) => n end.
+  Definition getFlag (d:D) := match d with (mkD n b) => b end.
+  Program Instance DAccess : FieldAccess D DFieldTypes :=
+(* Ideally we'd just directly define, but Coq's pattern matching is weak, so we'll use the refine tactic. :=*)
+  { fieldOf := fun obj x => (*match obj with (mkD n b) =>
+                              match x as x in t _ return DFieldTypes _ with
+                              | F1 f1n => _
+                              | FS fsn finB => _
                               end
-                            end;
+                            end;*)
+(*                            match x as y return (x = y -> DFieldTypes x) with*)
+                            match x as y return DFieldTypes x with
+                            | F1 f1n => _
+                            | FS fsn finB => _
+                            end ;
 
     fieldUpdate := fun obj f v =>
-                     match (obj,f) with
-                     | (mkD n b,F1 _) => _
-                     | (mkD n b,FS _ _) => _
+                     match obj with (mkD n b) =>
+                       match f as f return D with
+                         | (F1 f1n) =>  mkD (_ n) b 
+                         | (FS fsn finB) => mkD n (_ b)
+                       end
                      end
-  }. *)
+  }.
+  Next Obligation. compute. induction x. refine (getCount obj). refine (getFlag obj). Defined. 
+  Next Obligation. compute. induction x. refine (getCount obj). refine (getFlag obj). Defined.
+
+Print DAccess.
+(*
   constructor. 
   (* fieldOf *) intro obj. intro x. destruct obj.
                 dependent induction x; red; auto.
   (* fieldUpdate *) intros obj x v. destruct obj.
                     dependent induction x; compute [DFieldTypes] in *. exact (mkD v b). exact (mkD n v).
-  Defined.
+  Defined.*)
 (* Print DAccess. (* <-- that is a terrible term due to dependent induction *) *)
   Instance pureD : pure_type D.
   Program Example demo {Γ} (r : ref{D|any}[deltaD,deltaD]) : rgref Γ unit Γ :=
@@ -83,7 +97,15 @@ Section FieldDemo.
     cut (forall f p1 p2 p3, @eq (DFieldTypes f) (@field_read D D _ _ _ _ _ DFieldTypes _ p1 p2 DAccess r f p3)  (@fieldOf D _ DFieldTypes DAccess (@fold D _ deltaD deltaD v) f)).
     intro Hcomp. rewrite Hcomp with (f := F1).
     destruct v. compute [nat2DField Count2nat].
-    compute. fold plus. rewrite plus_comm.
-
-
+    compute [fieldOf]. unfold DAccess. unfold DAccess_obligation_1. unfold fold.
+    unfold pure_fold. unfold getCount. unfold getFlag. unfold const_id_fold.
+    compute [t_rec t_rect]. (* Now pretty sure I screwed up the def of fieldUpdate *)
+    Check DAccess_obligation_3.
+    compute [DAccess_obligation_3].
+    compute -[fieldUpdate].
+    compute [fieldOf DFieldTypes DAccess DAccess_obligation_1 fold DAccess_obligation_3]. rewrite plus_comm.
+    (* At this point we *should* be done, but the use of dependent induction to work around
+       Coq's pattern matching has introduced some uses of JMeq to deal with *)
+    generalize (@JMeq_eq (t (S (S O))) (@F1 (S O)) (@F1 (S O)) (@JMeq_refl (t (S (S O))) (@F1 (S O)))).
+    intro e. elim e.
 End FieldDemo.
