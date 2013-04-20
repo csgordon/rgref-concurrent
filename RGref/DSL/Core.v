@@ -117,7 +117,9 @@ Definition precise_rel {A:Set}{AR:ImmediateReachability A} (R:hrel A) :=
     is essentially a no-op.  The guarantee, however, still needs to be
     projected and intersected component-wise in any structure. *)
 Class rel_fold (A:Set) :=
-  { rgfold : forall (R G:hrel A), Set }.
+  { rgfold : forall (R G:hrel A), Set ;
+    fold : forall {R G}, A -> rgfold R G
+  }.
 (** In meta-proofs, of things like satisfying a guarantee, we use this
     identity fold instead of the appropriate developer instance so
     G and P don't have to have polymorphic arities and relation arguments
@@ -126,7 +128,9 @@ Class rel_fold (A:Set) :=
 *)
 Section HideMetaFold.
 Local Instance meta_fold {A:Set} : rel_fold A :=
-  { rgfold := fun R G => A }.
+  { rgfold := fun R G => A ;
+    fold := fun _ _ x => x
+  }.
 End HideMetaFold.
 Notation "{{{ e }}}" := (let mfold : forall A, rel_fold A := @meta_fold in e) (at level 50).
 
@@ -152,6 +156,16 @@ But that reduction is stronger than default conversion (at least in 8.3... still
 Axiom deref : forall {A:Set}{B:Set}`{rel_fold A}{P:hpred A}{R G:hrel A}, hreflexive G -> rgfold R G = B -> ref A P R G -> B.
 (*Axiom deref : forall {A:Set}{P:hpred A}{R G:hrel A}, ref A P R G -> A.*)
 Notation "! e" := (deref _ _ e) (at level 30). (* with reflexivity, add an _ in there *)
+
+(* This axiom asserts that all folds that produce the same result type operate equally on
+   the underlying values. This is fragile if a developer specifies multiple instances for
+   folding the same type.  This is a weaker version of a more general axiom that
+   the relationship between the results of folds of different result types depends on the
+   relationship between results of the fold members of the instances when applied to the
+   same value.  This version is really only useful for equating identity folds with
+   the identity meta_fold instance results. *)
+Axiom deref_conversion : forall (A B:Set)(f f':rel_fold A) P R G  rf1 rf2 fe1 fe2,
+                         @deref A B f P R G rf1 fe1 = @deref A B f' P R G rf2 fe2.
 
 Axiom ptr_eq_deref : forall A P P' R R' G G' h (p:ref{A|P}[R,G]) (r:ref{A|P'}[G',R']), p≡r -> h[p]=h[r].
 Hint Resolve ptr_eq_deref.
@@ -215,16 +229,24 @@ Global Instance ref_contains {A:Set}{P:hpred A}{R G:hrel A} : Containment (ref{A
 
 (** ** Relation Folding *)
 Definition const_rel_fold (A:Set) (R G:hrel A) : Set := A.
-Global Instance nat_fold : rel_fold nat := {rgfold := const_rel_fold nat}.
-Global Instance bool_fold : rel_fold bool := {rgfold := const_rel_fold bool}.
-Global Instance unit_fold : rel_fold unit := {rgfold := const_rel_fold unit}.
+Definition const_id_fold {A:Set}(R G:hrel A)(x:A) := x.
+Global Instance nat_fold : rel_fold nat := {rgfold := const_rel_fold nat; fold := const_id_fold}.
+Global Instance bool_fold : rel_fold bool := {rgfold := const_rel_fold bool; fold := const_id_fold}.
+Global Instance unit_fold : rel_fold unit := {rgfold := const_rel_fold unit; fold := const_id_fold}.
 Global Instance pair_fold `{A:Set,B:Set,FA:rel_fold A,FB:rel_fold B}: rel_fold (A*B) :=
   { rgfold := fun R G => 
     prod (rgfold (fun _ _ _ _ => True) (fun a a' h h' => forall b, G (a,b) (a',b) h h'))
-         (rgfold (fun _ _ _ _ => True) (fun b b' h h' => forall a, G (a,b) (a,b') h h')) }.
+         (rgfold (fun _ _ _ _ => True) (fun b b' h h' => forall a, G (a,b) (a,b') h h')) ;
+    fold := fun R G xy => match xy with (x,y) => (fold x, fold y) end
+  }.
 Global Instance ref_fold `{A:Set,P:hpred A,R:hrel A,G:hrel A} : rel_fold (ref{A|P}[R,G]) :=
   { rgfold := fun R' G' => ref{A|P}[R,G ⋂ (fun a a' h h' => 
-                                             forall (r:ref{A|P}[R,G]), h[r]=a -> h'[r]=a' -> G' r r h h')] }.
+                                             forall (r:ref{A|P}[R,G]), h[r]=a -> h'[r]=a' -> G' r r h h')]
+  }.
+(* We'll admit the runtime fold for references; the semantics for proofs will need an extensional treatment
+   as an axiom. *)
+Admitted.
+
 (** TODO: polymorphic lists *)                             
 
 (** ** Reachability, containment, and folding for pure types *)
@@ -237,7 +259,7 @@ Global Instance pure_reachable `{A:Set,PA:pure_type A} : ImmediateReachability A
 Global Instance pure_contains `{A:Set,PA:pure_type A} : Containment A :=
   { contains := fun _ => True }.
 Global Instance pure_fold `{A:Set,PA:pure_type A} : rel_fold A :=
-  { rgfold := fun _ _ => A }.
+  { rgfold := fun _ _ => A ; fold := const_id_fold }.
 Global Instance nat_pure : pure_type nat.
 Global Instance bool_pure : pure_type bool.
 Global Instance unit_pure : pure_type unit.
@@ -248,3 +270,23 @@ Global Instance list_pure `{A:Set,PA:pure_type A} : pure_type (list A).
 (** For now we need an explicit subtyping operator *)
 Axiom convert_P : forall {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A},(forall v h, P v h -> P' v h) -> precise_pred P' -> stable P' R -> ref{A|P}[R,G] -> ref{A|P'}[R,G].
 Axiom conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x, h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
+Axiom convert : forall {A:Set}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A},
+                ref{A|P}[R,G] ->
+                (forall v h, P v h -> P' v h) ->
+                (G' ⊆ G) -> (R ⊆ R') -> stable P' R' -> 
+                (G' ⊆ R') -> (* <-- self-splitting, this is a pure conversion *)
+                ref{A|P'}[R',G'].
+Axiom convert_equiv : forall {A}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A}
+                             (r:ref{A|P}[R,G]) pfP pfG pfR stab splt,
+                             forall h, h[r]=h[@convert A P P' R R' G G' _ r pfP pfG pfR stab splt].
+
+Axiom refine_ref : forall {A:Set}{P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
+                   (r : ref{A|P}[R,G])
+                   (x : rgfold R G),
+                   stable P' R ->
+                   ((@deref _ _ fld _ _ _ rfl (eq_refl) r) = x) -> (* <-- This is only available in special match statements, and flow is restricted! *)
+                   (forall h, (fold (h[r]))=(deref rfl (eq_refl) r) -> (deref rfl eq_refl r) = x -> P (h[r]) h -> P' (h[r]) h) ->
+                   ref{A|P'}[R,G].
+Axiom refinement_equiv : forall {A P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
+                                (r:ref{A|P}[R,G]) x stab pf refpf,
+                                forall h, h[r] = h[@refine_ref A P P' R G fld rfl r x stab pf refpf].

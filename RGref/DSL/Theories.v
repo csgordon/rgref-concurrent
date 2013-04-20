@@ -67,7 +67,9 @@ Proof. compute. intros. inversion H2; subst; constructor. Qed.
 Hint Resolve optset_precise.
 (* TODO: Contains instance for options *)
 Instance option_fold {A:Set}`{rel_fold A} : rel_fold (option A) :=
-  { rgfold := fun R G => option (rgfold havoc (fun a a' h h' => G (Some a) (Some a') h h')) }.
+  { rgfold := fun R G => option (rgfold havoc (fun a a' h h' => G (Some a) (Some a') h h')) ;
+    fold := fun R G o => match o with None => None | Some o' => Some (fold o') end
+  }.
 Lemma optset_refl : forall (A:Set), hreflexive (optset A).
 Proof. compute; intuition; constructor. Qed.
 Hint Resolve optset_refl.

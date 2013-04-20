@@ -233,7 +233,8 @@ Hint Resolve precise_prepend.
 (* Folding anything into this list container is a no-op: the head already points to a rgrList' with guarantee list_imm,
    so no further restriction is necessary / possible. *)
 Instance lst_cont_fold {P Q}: rel_fold (@list_container P Q) := {
-  rgfold := (fun R => fun G => @list_container P Q)
+  rgfold := (fun R => fun G => @list_container P Q) ;
+  fold := fun _ _ x => x
 }.
 
 Require Import Coq.Program.Tactics.

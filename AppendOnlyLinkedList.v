@@ -27,7 +27,9 @@ Obligation Tactic :=
 Require Import Coq.Program.Tactics.
 
 Global Instance appList_fold : rel_fold appList :=
-  { rgfold := fun R G => appList }. (* TODO: This is technically unsound - need to recursively rewrite tail pointer relations... *)
+  { rgfold := fun R G => appList ; (* TODO: This is technically unsound - need to recursively rewrite tail pointer relations... *)
+    fold := fun R G x => x
+  }.
 
 Global Instance appList_contains : Containment appList. Admitted.
  (* want something like { contains := fun RR => RR = (optset ...) }. but need to handle cons/option shifting *)
@@ -48,7 +50,15 @@ Program Definition alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
                                           | rcons n' tl' => rec tl'
                                         end)
                         end))) l.
-Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed. 
+Next Obligation.
+  (* This proof is by no means ideal.  It only works because we can assume
+     that appList_fold's identity behavior matches meta_fold, which is useful
+     but very specific, and won't be true in many cases we care about. *)
+  erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
+  rewrite <- Heq_anonymous.
+  constructor. 
+  Grab Existential Variables. eauto. eauto.
+Qed. 
 
 Program Example test1 {Γ} : rgref Γ unit Γ :=
   l <- Alloc None;

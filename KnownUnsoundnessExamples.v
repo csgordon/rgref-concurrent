@@ -28,8 +28,19 @@ Program Definition BAD_alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
                                           | rcons n' tl' => rec tl'
                                         end)
                         end))) l.
-Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed.  
-Next Obligation. compute in *. rewrite <- Heq_anonymous. constructor. Qed.
+Next Obligation. 
+  erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
+  rewrite <- Heq_anonymous.
+  constructor. 
+  Grab Existential Variables. eauto. eauto.
+Qed.  
+Next Obligation. 
+  erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
+  rewrite <- Heq_anonymous.
+  constructor. 
+  Grab Existential Variables. eauto. eauto.
+Qed.  
+
 (** The specific issue with this example is that using a match inside a Program Definition
     adds an equality proof to the context for goals inside the match clauses.  In this case,
     in the None branch of the match, the assumption << !tl=None >> is added to the context.
