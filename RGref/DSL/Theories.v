@@ -41,6 +41,16 @@ Definition local_imm {A:Set} : hrel A := fun a => fun a' => fun _ => fun _ => a=
 Lemma local_imm_const : forall A, locally_const (@local_imm A).
 Proof. intros; firstorder. Qed.
 Hint Resolve local_imm_const.
+Lemma local_imm_precise : forall (T:Set)`{ImmediateReachability T}, precise_rel (@local_imm T).
+Proof.
+  red; intros. induction H2. red. reflexivity.
+Qed.
+Hint Resolve local_imm_precise.
+Lemma local_imm_refl : forall (T:Set), @hreflexive T local_imm.
+Proof.
+  compute; eauto.
+Qed.
+Hint Resolve local_imm_refl.
 
 Definition heap_agnostic_pred {A:Set} (P:hpred A) := forall a h h', P a h -> P a h'.
 Definition heap_agnostic_rel {A:Set} (R:hrel A) := forall a a' h h' h'' h''', R a a' h h' -> R a a' h'' h'''.
@@ -60,13 +70,13 @@ Inductive option_reach : forall (A:Set)`(ImmediateReachability A) {T:Set}{P R G}
   | opt_reach_some : forall (A:Set)(a:A)`(ImmediateReachability A) {T:Set}{P R G} (p:ref{T|P}[R,G]),
                          imm_reachable_from_in p a ->
                          option_reach A _ p (Some a).
-Instance reach_option {A:Set}`{ImmediateReachability A} : ImmediateReachability (option A) :=
+Global Instance reach_option {A:Set}`{ImmediateReachability A} : ImmediateReachability (option A) :=
   { imm_reachable_from_in := fun T P R G p oa => option_reach A _ p oa }.
 Lemma optset_precise : forall A `(ImmediateReachability A), precise_rel (optset A).
 Proof. compute. intros. inversion H2; subst; constructor. Qed.
 Hint Resolve optset_precise.
 (* TODO: Contains instance for options *)
-Instance option_fold {A:Set}`{rel_fold A} : rel_fold (option A) :=
+Global Instance option_fold {A:Set}`{rel_fold A} : rel_fold (option A) :=
   { rgfold := fun R G => option (rgfold havoc (fun a a' h h' => G (Some a) (Some a') h h')) ;
     fold := fun R G o => match o with None => None | Some o' => Some (fold o') end
   }.
@@ -77,7 +87,7 @@ Inductive opt_contains {A:Set}`{Containment A} : hrel (option A) -> Prop :=
   | some_contains : forall RR (h h':heap),
                       contains (fun a a' h h' => RR (Some a) (Some a') h h') ->
                       opt_contains RR.
-Instance option_contains {A:Set}`{Containment A} : Containment (option A) :=
+Global Instance option_contains {A:Set}`{Containment A} : Containment (option A) :=
   { contains := opt_contains }.
 
 (** ** Combinator Lemmas *)
@@ -99,8 +109,20 @@ Proof. intros. compute[precise_rel rel_and] in *. intuition. eauto. eauto. Qed.
 Lemma rel_or_precise : forall (A:Set){RA:ImmediateReachability A}(R S:hrel A), precise_rel R -> precise_rel S -> precise_rel (R ⋃ S).
 Proof. intros. compute[precise_rel rel_or] in *. intuition. eauto. eauto. Qed.
 Require Import Coq.Classes.RelationClasses.
-Instance rel_sub_eq_preorder `{A:Set} : PreOrder (@rel_sub_eq A).
+Global Instance rel_sub_eq_preorder `{A:Set} : PreOrder (@rel_sub_eq A).
 Proof. constructor. firstorder. firstorder. Qed.
+
+Lemma pred_sub_refl : forall T (P:hpred T), P⊑P.
+Proof.
+  compute; eauto.
+Qed.
+Hint Resolve pred_sub_refl.
+
+Lemma rel_sub_refl : forall T (R:hrel T), R⊆R.
+Proof.
+  compute; eauto.
+Qed.
+Hint Resolve rel_sub_refl.
 
 (** Also need to be able to pull results out of conjunctions *)
 Lemma pred_and_proj1 : forall (A:Set) P Q (a:A) (h:heap), (P ⊓ Q) a h -> P a h.

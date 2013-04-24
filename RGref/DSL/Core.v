@@ -28,6 +28,10 @@ Definition pred_or {A:Set} (P Q:hpred A) : hpred A :=
   fun a => fun h => P a h \/ Q a h.
 Infix "⊔" := (pred_or) (at level 41).
 
+Definition pred_sub_eq {A:Set} (P Q:hpred A) : Prop :=
+  forall x h, P x h -> Q x h.
+Infix "⊑" := (pred_sub_eq) (at level 41).
+
 Definition rel_and {A:Set} (R:hrel A) (S:hrel A) : hrel A :=
   fun a a' h h' =>
     R a a' h h' /\ S a a' h h'.
@@ -43,6 +47,10 @@ Infix "⊆" := (rel_sub_eq) (at level 45).
 
 Definition stable {A} (P:hpred A) (R:hrel A) :=
   forall x x' h h', P x h -> R x x' h h' -> P x' h'.
+
+Definition pred_iff {A : Set} (P Q : hpred A) : Prop :=
+  forall x h, P x h <-> Q x h.
+Infix "≡p" := (pred_iff) (at level 45).
 
 (** * References
     ref must be defined completely, otherwise Coq's positivity checks are extremely conservative *)
@@ -239,13 +247,13 @@ Global Instance pair_fold `{A:Set,B:Set,FA:rel_fold A,FB:rel_fold B}: rel_fold (
          (rgfold (fun _ _ _ _ => True) (fun b b' h h' => forall a, G (a,b) (a,b') h h')) ;
     fold := fun R G xy => match xy with (x,y) => (fold x, fold y) end
   }.
+Print rel_fold.
 Global Instance ref_fold `{A:Set,P:hpred A,R:hrel A,G:hrel A} : rel_fold (ref{A|P}[R,G]) :=
   { rgfold := fun R' G' => ref{A|P}[R,G ⋂ (fun a a' h h' => 
-                                             forall (r:ref{A|P}[R,G]), h[r]=a -> h'[r]=a' -> G' r r h h')]
+                                             forall (r:ref{A|P}[R,G]), h[r]=a -> h'[r]=a' -> G' r r h h')];
+    fold := (fun R G r => match r with ref_placeholder n => ref_placeholder _ _ _ _ n end)
   }.
-(* We'll admit the runtime fold for references; the semantics for proofs will need an extensional treatment
-   as an axiom. *)
-Admitted.
+(* Exposing this fold definition above is risky; it could have weird results in some proofs... *)
 
 (** TODO: polymorphic lists *)                             
 
