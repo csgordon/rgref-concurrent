@@ -117,6 +117,14 @@ Global Instance array_contains {n:nat}{T:Set}`{Containment T} : Containment (Arr
                                                R a (array_write a f x') h h')
 }.
 
+(** Arrays a essentially [fin n]-indexed object, so use those as fields.
+    This lets us use fields with things like fCAS *)
+Global Instance array_fields {n:nat}{T:Set} : FieldTyping (Array n T) (fin n).
+Global Instance array_field_index {n:nat}{T:Set}{f:fin n} : FieldType (Array n T) (fin n) f T := {
+  getF := fun v => array_read v f;
+  setF := fun v fv => array_write v f fv
+}.
+
 End Arrays.
 
 Notation "a <| x |>" := (array_read a x) (at level 50).
