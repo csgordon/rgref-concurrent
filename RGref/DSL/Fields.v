@@ -1,5 +1,5 @@
 Require Import RGref.DSL.DSL.
-Require Import Coq.Vectors.Fin.
+Require Export Coq.Vectors.Fin.
 Require Import Coq.Arith.Arith.
 
 (* Field Typing is a tagging mechanism, that fields of T are indexed by F *)
