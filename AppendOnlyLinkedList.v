@@ -42,20 +42,17 @@ Global Instance applist_reachable : ImmediateReachability appList :=
 
 Program Definition alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
   (RGFix _ _ (fun (rec:alist->rgref Γ unit Γ) =>
-             (fun tl => match !tl with
-                          | None => ( f <- Alloc None;
+             (fun tl => match !tl as y return (!tl = y -> _) with
+                          | None => fun _ => ( f <- Alloc None;
                                       [ tl ]:= (Some (rcons n f))
                                     )
-                          | Some l' => (match l' with
+                          | Some l' => fun _ => (match l' with
                                           | rcons n' tl' => rec tl'
                                         end)
-                        end))) l.
+                        end _))) l.
 Next Obligation.
-  (* This proof is by no means ideal.  It only works because we can assume
-     that appList_fold's identity behavior matches meta_fold, which is useful
-     but very specific, and won't be true in many cases we care about. *)
   erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
-  rewrite <- Heq_anonymous.
+  rewrite H.
   constructor. 
   Grab Existential Variables. eauto. eauto.
 Qed. 
