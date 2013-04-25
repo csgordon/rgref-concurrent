@@ -40,15 +40,15 @@ Global Instance applist_reachable : ImmediateReachability appList :=
 
 Program Definition alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
   (RGFix _ _ (fun (rec:alist->rgref Γ unit Γ) =>
-             (fun tl => match !tl with
-                          | None => ( f <- Alloc None;
+             (fun tl => match !tl as y return (!tl = y -> _) with
+                          | None => fun _ => ( f <- Alloc None;
                                       [ tl ]:= (Some (rcons n f))
                                     )
-                          | Some l' => (match l' with
+                          | Some l' => fun _ => (match l' with
                                           | rcons n' tl' => rec tl'
                                         end)
-                        end))) l.
-Next Obligation. compute in Heq_anonymous. compute. rewrite <- Heq_anonymous. constructor. Qed. 
+                        end _))) l.
+Next Obligation. compute in *. rewrite H. constructor. Qed. 
 
 Program Example test1 {Γ} : rgref Γ unit Γ :=
   l <- Alloc None;
