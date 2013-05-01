@@ -104,9 +104,18 @@ Section Body.
     Alloc (mkES None locarr colarr).
 
   (* TODO: more precise rely, guarantee, predicate for ThreadInfo operations. *)
-  Program Definition TryCollision {Γ} (es:EliminationStack) (p:ref{ThreadInfo|any}[havoc,havoc]) (q:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ bool Γ.
-  Admitted.
-Check @getF.
+  Program Definition TryCollision {Γ} (es:EliminationStack) (him:nat) (p:ref{ThreadInfo|any}[havoc,havoc]) (q:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ bool Γ :=
+    match p~>op with
+    | PUSH => (*@field_cas_core _ _ _ _ _ _ _ _ (es~>location) mypid _ _ (Some q) None _ *)
+              fCAS((es~>location)→him, Some q, Some p) (* WTF? where is 'him' scoped in the original paper??? globally? *)
+    | POP => res <- fCAS((es~>location)→him, Some q, None);
+             if res
+             then (_ <- {[p ~~> cell ]}:= (q ~> cell);
+                   _ <- {[(es~>location)~~>mypid]}:= @None _;
+                   rgret true)
+             else rgret false
+    end.
+
   (* Paper uses a type 'ProcessInfo' which appears to be intended to be 'ThreadInfo' *)
   Program Definition FinishCollision {Γ} (es:EliminationStack) (p:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ unit Γ :=
     match (p ~> op) with

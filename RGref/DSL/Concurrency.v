@@ -16,5 +16,5 @@ Axiom field_cas_core : forall Γ T P R G F FT `{FieldTyping T F}
                                            G v (setF v fv') h (heap_write r (setF v fv') h)) ->
                               rgref Γ bool Γ.
 
-Notation "fCAS( r → f , e , e' )" := (field_cas_core _ _ _ _ _ _ _ _ r f _ e e' _) (at level 70).
+Notation "fCAS( r → f , e , e' )" := (@field_cas_core _ _ _ _ _ _ _ _ r f _ _ e e' _) (at level 70).
 
