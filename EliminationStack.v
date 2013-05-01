@@ -3,20 +3,19 @@ Require Import RGref.DSL.Concurrency.
 Require Import RGref.DSL.Fields.
 Require Import TrieberStack. (* Reuse the node implementation *)
 
-
-
 (** Elimination Stack
     We'll roughly follow the paper "A Scalable Lock-free Stack Algorithm"
     by Hendler, Shavit, and Yerushalmi, from SPAA'04. *)
+Inductive Op : Set := PUSH | POP.
 Inductive  ThreadInfo : Set :=
-  | mkTI : nat -> nat -> Node -> nat -> ThreadInfo.
+  | mkTI : nat -> Op -> Node -> nat -> ThreadInfo.
 Inductive TIFields : Set := id | op | cell | spin.
 Instance ti_ft : FieldTyping ThreadInfo TIFields.
 Instance ti_id : FieldType ThreadInfo TIFields id nat :=
 { getF := (fun ti => match ti with mkTI i o c s => i end);
   setF := (fun ti v => match ti with mkTI i o c s => mkTI v o c s end)
 }.
-Instance ti_op : FieldType ThreadInfo TIFields op nat :=
+Instance ti_op : FieldType ThreadInfo TIFields op Op :=
 { getF := (fun ti => match ti with mkTI i o c s => o end);
   setF := (fun ti v => match ti with mkTI i o c s => mkTI i v c s end)
 }.
@@ -104,3 +103,55 @@ Section Body.
     colarr <- Alloc (new_array size _ 0);
     Alloc (mkES None locarr colarr).
 
+  (* TODO: more precise rely, guarantee, predicate for ThreadInfo operations. *)
+  Program Definition TryCollision {Γ} (es:EliminationStack) (p:ref{ThreadInfo|any}[havoc,havoc]) (q:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ bool Γ.
+  Admitted.
+Check @getF.
+  (* Paper uses a type 'ProcessInfo' which appears to be intended to be 'ThreadInfo' *)
+  Program Definition FinishCollision {Γ} (es:EliminationStack) (p:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ unit Γ :=
+    match (p ~> op) with
+    | POP =>
+        (*[ @field_read ThreadInfo _ _ _ _ _ _ _ _ _ p cell _ ti_cell ]:= _*)
+        (*[ @field_read ThreadInfo _ _ _ _ _ _ _ _ _ p cell _ _ ]:= _*)
+        (*[ @field_read _ _ _ _ _ _ _ _ _ _ p cell _ _ ]:= _*)
+        _ <- {[ p ~~> cell ]}:= ( ((es ~> location)~>mypid)~>cell );
+        {[ (es~>location)~~>mypid ]}:= @None _
+    | _ => rgret tt
+    end.
+  
+  Program Definition LesOP {Γ} (es:EliminationStack) (p:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ unit Γ.
+  Admitted.
+
+  Program Definition TryPerformStackOp {Γ} (es:EliminationStack) (p:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ bool Γ :=
+    match (p ~> op) with
+    | PUSH => (phead <- (es~>stack);
+               _ <- {[ (p~>cell)~~>next ]}:= phead;
+               fCAS(es → stack, phead, Some _ ) (* Needs to be &p~>cell, but cell is embedded in ThreadInfo atm. Also need Node fields.
+                                                   What should the R,G be for the Node ptr in ThreadInfo? We assign to it here, so
+                                                   it can't be local_imm.  Later we set cell field of ThreadInfo to null, so
+                                                   it should actually be an option of a ref to a Node.
+
+                                                   OH! Or not... Fig. 3 seems to use EMPTY as value-copying the empty node... Line T11 vs. T15,
+                                                   and the ThreadInfo def in Fig. 2 has the Cell inline...
+                                                 *)
+               )
+    | POP => (phead <- es~>stack;
+              match phead with
+              | None => ( _ <- {[ p ~~> cell ]}:= EMPTY;
+                          rgret true)
+              | Some hd => (
+                    pnext <- hd~>next;
+                    IF fCAS(es→stack, phead, pnext)
+                    THEN (_ <- {[ p ~~> cell ]}:= phead;
+                          rgret true)
+                    ELSE (_ <- {[ p ~~> cell ]}:= EMPTY;
+                          rgref false)
+                    )
+               end
+    end.
+  
+  Program Definition StackOp {Γ} (es:EliminationStack) (pInfo:ref{ThreadInfo|any}[havoc,havoc]) : rgref Γ unit Γ :=
+    op <- TryPerformStackOp es pInfo;
+    if op
+    then rgret tt
+    else LesOP pInfo.

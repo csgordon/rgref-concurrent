@@ -20,6 +20,8 @@ Axiom field_read : forall {T B F Res:Set}{P R G}`{rel_fold T}
                           `{FieldType B F f Res},
                           Res.
 
+Notation "x ~> f" := (@field_read _ _ _ _ _ _ _ _ _ _ x f _ _) (at level 50).
+
 Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:rel_fold T}
                            (r:ref{T|P}[R,G]) (f:F) (e : Res)
                            `{FieldTyping T F}
@@ -31,6 +33,8 @@ Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:rel_fold T}
                                    @getF (@rgfold T folder R G) F ft' f Res fte' (@fold T folder R G v)) ->
                                G v (@setF T F _ f Res ft v e) h (heap_write r (@setF T F _ f Res ft v e) h)},
                            rgref Γ unit Γ.
+
+Notation "{[ x ~~> f ]}:= e" := (@field_write _ _ _ _ _ _ _ _ x f e _ _ _) (at level 50).
 
 Section FieldDemo.
 
