@@ -26,6 +26,9 @@ Hint Resolve precise_havoc.
 Lemma havoc_true : forall (A:Set) (a a':A) h h', havoc a a' h h'.
 Proof. intros; compute; auto. Qed.
 Hint Resolve havoc_true.
+Lemma havoc_refl : forall (A:Set), hreflexive (@havoc A).
+Proof. compute; eauto. Qed.
+Hint Resolve havoc_refl.
 
 Definition empty {A:Set} : hrel A := fun _ => fun _ => fun _ => fun _ => False.
 

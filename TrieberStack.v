@@ -66,7 +66,11 @@ Program Definition push_ts {Γ} : ts -> nat -> rgref Γ unit Γ :=
                                                (rel_sub_refl _ local_imm)));
     if success then rgret tt else rec s n).
 Next Obligation.
-  Admitted. (* Need axiom that ref types are equal if the P, R, and G are all iff *)
+  f_equal. intros. rewrite H. reflexivity.
+  eapply (rgref_exchange); try solve[compute; eauto].
+  split; red; intros. red in H. destruct H. eauto.
+  split; eauto. intros. constructor.
+  Defined.
 Next Obligation. (* local identity constraint stable wrt local_imm *)
   compute. intros. subst. rewrite <- H0. reflexivity. Qed.
 Next Obligation.
@@ -92,7 +96,11 @@ Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
                  end
     end).
 Next Obligation.
-  Admitted. (* Same axiom need as above *)
+  f_equal. intros. rewrite H. reflexivity.
+  eapply (rgref_exchange); try solve[compute; eauto].
+  split; red; intros. red in H. destruct H. eauto.
+  split; eauto. intros. constructor.
+Defined.
 Next Obligation. (* Guarantee Satisfaction *)
   (* Need to export a couple assumptions locally inside this lemma:*)
   assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:rel_fold T} rpf (epf:rgfold R G=B), deref rpf epf r = asB R G epf (@fold T _ R G (h[r]))). admit.

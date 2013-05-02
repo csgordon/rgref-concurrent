@@ -45,6 +45,8 @@ Definition rel_sub_eq {A:Set} (R S:hrel A) : Prop :=
   forall a a' h h', R a a' h h' -> S a a' h h'.
 Infix "⊆" := (rel_sub_eq) (at level 45).
 
+Notation "R ⊆⊇ R'" := (rel_sub_eq R R' /\ rel_sub_eq R' R) (at level 50).
+
 Definition stable {A} (P:hpred A) (R:hrel A) :=
   forall x x' h h', P x h -> R x x' h h' -> P x' h'.
 
@@ -75,6 +77,8 @@ Axiom heap_lookup2 : forall {A P R G} (h:heap) (r:ref{A|P}[R,G]), P (h[r]) h.
 (** Some concepts require a parameter-polymorphic reference equality. *)
 Axiom ptr_eq : forall {A A' P P' R R' G G'}, ref A P R G -> ref A' P' R' G' -> Prop.
 Infix "≡" := (ptr_eq) (at level 80).
+
+Axiom rgref_exchange : forall τ P P' R R' G G', P ≡p P' -> R ⊆⊇ R' -> G ⊆⊇ G' -> ref{τ|P}[R,G] = ref{τ|P'}[R',G'].
 
 Axiom type_based_nonaliasing : forall h τ σ P R G Q R' G' `(a:ref{τ|P}[R,G]) `(b:ref{σ|Q}[R',G']) v, τ<>σ ->
   (heap_write a v h)[b] = h[b].
@@ -277,6 +281,7 @@ Global Instance list_pure `{A:Set,PA:pure_type A} : pure_type (list A).
     Things like heap dereference being the same between converted and unconverted references, etc. *)
 (** For now we need an explicit subtyping operator *)
 Axiom convert_P : forall {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A},(forall v h, P v h -> P' v h) -> precise_pred P' -> stable P' R -> ref{A|P}[R,G] -> ref{A|P'}[R,G].
+Axiom convert_G : forall {A:Set}{P:hpred A}{R G G':hrel A}`{ImmediateReachability A}, precise_rel G' -> (G' ⊆ G) -> ref{A|P}[R,G] -> ref{A|P}[R,G'].
 Axiom conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x, h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
 Axiom convert : forall {A:Set}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A},
                 ref{A|P}[R,G] ->
