@@ -28,7 +28,7 @@ Inductive deltaNode : hrel Node :=
                    deltaNode (h[tl]) (h'[tl]) h h' ->
                    deltaNode (mkNode Node validNode R n (Some tl)) (mkNode Node validNode R n (Some tl)) h h'
   | node_append : forall n n' R tl h h',
-                    h[tl]=(mkNode Node validNode R n' None) ->
+                    (* Do I need this? h[tl]=(mkNode Node validNode R n' None) -> *)
                     h'[tl]=(mkNode Node validNode R n' None) ->
                     deltaNode (mkNode Node validNode R n None)
                               (mkNode Node validNode R n (Some tl))
@@ -54,7 +54,7 @@ Proof.
      but we already know it's Some... *) admit.
       assert (Htmp := nd_inj2 _ _ _ _ _ _ _ _ _ H2). destruct Htmp. subst.
       assert (Htmp := nd_inj3 Node validNode R _ _ _ _ H2). destruct Htmp. subst. inversion H4; subst. assumption.
-  rewrite H1. constructor.
+  rewrite H0. constructor.
 Qed.
 Hint Resolve msq_stability.
 
@@ -122,8 +122,17 @@ Qed.
 Hint Resolve precise_valid_node.
 
 Lemma precise_delta_node : precise_rel deltaNode.
-  (* TODO: Need inversion axioms... *)
-Admitted.
+  compute; intros; intuition; eauto. induction H1; try constructor.
+
+  rewrite <- H. rewrite <- H0. apply IHdeltaNode.
+  intros. apply H. eapply trans_reachable with (i := tl). constructor. assumption.
+  intros. apply H0. eapply trans_reachable with (i := tl). constructor. assumption.
+  constructor. constructor. constructor. constructor.
+
+  eapply node_append.
+  rewrite <- H0. eauto.
+  constructor. constructor.
+Qed.
 Hint Resolve precise_delta_node.
 
 Lemma precise_δmsq : precise_rel δmsq.
