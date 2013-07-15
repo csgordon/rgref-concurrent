@@ -150,3 +150,19 @@ Program Definition alloc_msq {Γ} (_:unit) : rgref Γ msq Γ :=
   sentinel <- Alloc (mkNode Node validNode deltaNode 0 None);
   (*sentinel <- alloc _ _ _  (mkNode Node validNode deltaNode 0 None) _ _ _ _ _;*)
   Alloc (mkMSQ sentinel).
+
+(* The CAS is going to hit large elimination issues.... 
+Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
+  RGFix _ _ (fun rec q =>
+    match !q with
+    | mkMSQ q =>
+    match !q with
+    | mkNode _ _ _ _ None => rgret None
+    | mkNode _ _ _ _ (Some hd) =>
+                 match !hd with
+                 | mkNode _ _ _ n tl => success <- CAS(q,mkMSQ hd,tl);
+                                        if success then rgret (Some n) else rec q
+                 end
+    end
+    end).
+*)
