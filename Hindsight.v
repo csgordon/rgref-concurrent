@@ -47,8 +47,11 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
      - .... - δe : exterior node does not become a backbone node (seems to follow from φUB and δm... not from φub...)
      - DONE - δen : successor of an exterior node does not change (succ of marked node doesn't change)
      - DONE - δbn : if a backbone successor changes, the node must remain a backbone (unmarked)
-     Remember than a backbone node is one reachable from the head, and only unmarked nodes are backbone nodes.
+     Remember that a backbone node is one reachable from the head, and only unmarked nodes are backbone nodes.
      Marked nodes are removed, exterior nodes.
+
+     DONE = done
+     IMPL = implicit in data representation (e.g. option vs. not option for nullable vs. non-null )
 
   *)
   Inductive E : Set :=
@@ -66,8 +69,8 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                     deltaE P (mkE E P R G n m nxt) (mkE E P R G n m nxt) h h'
   (* δm : A marked node does not become unmarked (we encode the complement of this relation) *)
   | deltaE_mark : forall n R G next h h',
-                    (match next with None => True | Some tl => valOfE (h'[tl]) = valOfE (h[tl]) end) ->
-                    deltaE P (mkE E P R G n false next) (mkE E P R G n true next) h h'
+                    (valOfE (h'[next]) = valOfE (h[next])) ->
+                    deltaE P (mkE E P R G n false (Some next)) (mkE E P R G n true (Some next)) h h'
   (* δbn : if a backbone successor changes, it remains a backbone (unmarked) in the new heap
            (part 1 of 2: also need to support removal) *)
   | deltaE_insert : forall n R G tl tl' h h' n',
@@ -150,10 +153,11 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     induction H0; inversion H; subst; crunchE; eauto.
         (*refl*) induction nxt; constructor; eauto.
                  destruct H1. destruct H1. exists x. intuition. rewrite H0; eauto.
-        (*mark*) induction next; constructor; eauto. destruct H1; destruct H1; eexists; intuition. rewrite <- H2 in *. rewrite H0; eauto.
+        (*mark*) destruct H1; destruct H1; eexists; intuition. exists x. rewrite <- H2 in *. eauto. 
         (*ins*) destruct H2. destruct H2. constructor. exists n'. intuition. rewrite H0. compute. reflexivity.
         (*rm *) constructor.
                  assert (Htmp := heap_lookup2 h' tl'). inversion Htmp; subst.
+                 exists n'; intuition.
                  (* The issue is that we don't presently have any explicit connection between h[tl'] and h'[tl'].
                     They should either be the same (in this case definitely, but proving the acyclicity etc. is hard)
                     or constrained by the R on tl', which in this case is [deltaE invE], which preserves n. *)
@@ -166,6 +170,18 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                  destruct H6. destruct H6.
                  exists x0. split. apply (ii_lt_trans n x); eauto.*)
   Admitted.
+  Hint Resolve stable_nodes.
+  Lemma stable_tail : stable tail_props (deltaE invE).
+  Proof.
+    red; intros.
+    Require Import Coq.Program.Equality.
+    dependent induction H0; inversion H; subst; crunchE; eauto; try constructor.
+    (* This case should be by [inversion H.] since tail_props prohibits the non-null next pointer in H... impred-set *) admit.
+    (* Again by inversion... *) admit.
+    (* And again... *) admit.
+  Qed.
+  Hint Resolve stable_tail.
+    
 
   Inductive e_reaching (T:Set) P R G : ref{T|P}[R,G] -> E -> Prop :=
     tl_ptr_reach : forall n m r, e_reaching T P R G r (mkE T P R G n m (Some r)).
@@ -206,7 +222,15 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     constructor.
   Qed.
   Hint Resolve precise_invE precise_tail precise_head.
-    
+  Lemma precise_deltaE : precise_rel (deltaE invE).
+  Proof.
+    red; intros. inversion H1; subst; try constructor.
+    induction nxt; eauto. rewrite <- H0. rewrite <- H. eauto. repeat constructor. repeat constructor.
+    rewrite <- H0. rewrite <- H. eauto. repeat constructor. repeat constructor.
+    eapply deltaE_insert. rewrite <- H0. eauto. repeat constructor. eauto.
+    eapply deltaE_remove. eauto. rewrite <- H. eauto. repeat constructor.
+  Qed.
+  Hint Resolve precise_deltaE.
 
   (** At this point, I need more type class instances.... Really folding only makes sense for
       fully parametric types like pairs.  Per-field folding makes sense for everything
@@ -227,7 +251,12 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
       Pair needs to be derivable from this, and pair_contains allows components to
       change! It's okay to bake ref_contains into this, but other valid instances
       of one-off Containment instances composed with ref_contains need to be
-      derivable from any general approach. *)
+      derivable from any general approach.
+
+      I think the conclusion needs to be pulled 'back a level' in the heap: for any location l
+      in the original heap h such that h[l]=x, Rel h[l] h'[l] h h'.  This allows for cyclic structures.
+
+   *)
   Inductive r_hlb : forall T P R G (r:ref{T|P}[R,G]), HindsightListBlock -> Prop :=
     | r_hd : forall hd tl, r_hlb E (invE ⊓ head_props) (deltaE invE) (deltaE invE) hd (mkHLB hd tl)
     | r_tl : forall hd tl, r_hlb E (invE ⊓ tail_props) (deltaE invE) (deltaE invE) tl (mkHLB hd tl).
@@ -239,10 +268,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     tail <- Alloc (mkE E invE (deltaE invE) (deltaE invE) ∞ false None);
     head <- Alloc (mkE E invE (deltaE invE) (deltaE invE) -∞ false (Some (convert_P _ _ _ tail)));
     Alloc (mkHLB head tail).
-  Next Obligation. Admitted. (* stability *)
   Next Obligation. split; try constructor; eauto. Qed. (* Tail P *)
-  Next Obligation. Admitted. (* precision of deltaE *)
-  Next Obligation. Admitted. (* again *)
   Next Obligation. eapply pred_and_proj1; eauto. Qed.
     
     {- TODO: I feel like the return type might need to be refined to give the relationship between k and the node values -}
