@@ -13,7 +13,7 @@ Inductive Node : Set :=
    Technically unsound. *)
 Axiom nd_inj1 : forall C D P P' R R' n n' tl tl', mkNode C P R n tl = mkNode D P' R' n' tl' -> C = D.
 Axiom nd_inj2 : forall C P P' R R' n n' tl tl', mkNode C P R n tl = mkNode C P' R' n' tl' -> P = P' /\ R = R'.
-Axiom nd_inj3 : forall C P R n n' tl tl', mkNode C P R n tl = mkNode C P R n tl -> n = n' /\ tl = tl'.
+Axiom nd_inj3 : forall C P R n n' tl tl', mkNode C P R n tl = mkNode C P R n' tl' -> n = n' /\ tl = tl'.
 
 Inductive validNode : hpred (Node) :=
   | nil_next : forall (TAIL:Set) (TP:hpred TAIL) (TRel:hrel TAIL) n h,
@@ -22,8 +22,11 @@ Inductive validNode : hpred (Node) :=
                   validNode (h[tl]) h ->
                   validNode (mkNode Node TP TRel n (Some tl)) h.
 Inductive deltaNode : hrel Node :=
-  | node_refl : forall n h h',
-                  deltaNode n n h h'
+  | node_nil_refl : forall n R h h',
+                  deltaNode (mkNode Node validNode R n None) (mkNode Node validNode R n None) h h'
+  | node_tl_refl : forall n R h h' tl,
+                   deltaNode (h[tl]) (h'[tl]) h h' ->
+                   deltaNode (mkNode Node validNode R n (Some tl)) (mkNode Node validNode R n (Some tl)) h h'
   | node_append : forall n n' R tl h h',
                     h[tl]=(mkNode Node validNode R n' None) ->
                     h'[tl]=(mkNode Node validNode R n' None) ->
@@ -44,8 +47,15 @@ Definition noderef := ref{Node|validNode}[deltaNode,deltaNode].
 Lemma msq_stability : stable validNode deltaNode.
 Proof.
   compute. intros.
-  (* Actualy, validNode isn't quite stable w.r.t. deltaNode since the refl case allows arbitrary heap changes! *)
-Admitted. (* TODO: Need inversion principles ...Qed. *)
+
+  induction H0; eauto; try constructor.
+  apply IHdeltaNode. inversion H; subst.
+  (* [sigh] impossible case not discharged b/c of impred-set... these assumptions come from the case where next is None,
+     but we already know it's Some... *) admit.
+      assert (Htmp := nd_inj2 _ _ _ _ _ _ _ _ _ H2). destruct Htmp. subst.
+      assert (Htmp := nd_inj3 Node validNode R _ _ _ _ H2). destruct Htmp. subst. inversion H4; subst. assumption.
+  rewrite H1. constructor.
+Qed.
 Hint Resolve msq_stability.
 
 (** We're following The Art of Multiprocessor Programming, S10.5, but
@@ -106,9 +116,8 @@ Lemma precise_valid_node : precise_pred validNode.
   Require Import Coq.Program.Equality.
   dependent induction H1.
     (* This case is a messy contradiction, induction tried to use the reflexively reachable case for things w/ wrong types *) admit.
-    eapply H0. (* Should be by induction on the imm_reachable_from_in r (h[tl]) and using transitivtiy... but impredicative Set *) admit.
-    eapply H0. (* Again... *) admit.
-    (* TODO: Write the inversion axioms, and make sure those are actually sufficient to do this proof! *)
+    eapply H0. Print reachable_from_in. eapply trans_reachable with (i := tl). constructor. eapply directly_reachable. assumption.
+    eapply H0. clear IHreachable_from_in. eapply trans_reachable with (i := tl). constructor. eapply trans_reachable with (i := i); eauto.
 Qed.
 Hint Resolve precise_valid_node.
 
