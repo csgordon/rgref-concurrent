@@ -2,7 +2,7 @@ Require Import Coq.Arith.Arith.
 Require Import RGref.DSL.DSL.
 
 (** * A "Postpend"-only Linked List
-    We side-step the induction-recursion issues we hit in the prepend-only
+    We side-step the induction-induction issues we hit in the prepend-only
     example by doing append-only via set-once options.  This makes it
     much easier to prove things about manipulating the list.  The downside
     is that we can't prevent cycles - doing so would need to talk about
