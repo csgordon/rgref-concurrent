@@ -9,6 +9,12 @@ Require Import RGref.DSL.Concurrency.
 Inductive Node : Set :=
   | mkNode : forall (TAIL:Set) (TP:hpred TAIL) (TRel:hrel TAIL),
                nat -> option (ref{TAIL|TP}[TRel,TRel]) -> Node.
+(* Workarounds for the elimination consequences of the impredicative encoding of induction-induction.
+   Technically unsound. *)
+Axiom nd_inj1 : forall C D P P' R R' n n' tl tl', mkNode C P R n tl = mkNode D P' R' n' tl' -> C = D.
+Axiom nd_inj2 : forall C P P' R R' n n' tl tl', mkNode C P R n tl = mkNode C P' R' n' tl' -> P = P' /\ R = R'.
+Axiom nd_inj3 : forall C P R n n' tl tl', mkNode C P R n tl = mkNode C P R n tl -> n = n' /\ tl = tl'.
+
 Inductive validNode : hpred (Node) :=
   | nil_next : forall (TAIL:Set) (TP:hpred TAIL) (TRel:hrel TAIL) n h,
                  validNode (mkNode TAIL TP TRel n None) h
@@ -16,8 +22,8 @@ Inductive validNode : hpred (Node) :=
                   validNode (h[tl]) h ->
                   validNode (mkNode Node TP TRel n (Some tl)) h.
 Inductive deltaNode : hrel Node :=
-  | node_refl : forall n h,
-                  deltaNode n n h h
+  | node_refl : forall n h h',
+                  deltaNode n n h h'
   | node_append : forall n n' R tl h h',
                     h[tl]=(mkNode Node validNode R n' None) ->
                     h'[tl]=(mkNode Node validNode R n' None) ->
@@ -25,22 +31,21 @@ Inductive deltaNode : hrel Node :=
                               (mkNode Node validNode R n (Some tl))
                               h h'.
 Print ImmediateReachability.
+Inductive msq_reach : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (a:Node), Prop :=
+  | msq_reach_tail : forall T P R p n, msq_reach p (mkNode T P R n (Some p)).
+(* This instance must be defined this way rather than as a naive match on the node
+   to avoid eliminating a large data type (the inductive-inductive-hacked Node)
+   into Type *)
 Global Instance nd_reach : ImmediateReachability Node := {
-  imm_reachable_from_in :=
-  (fun T P R G r nd =>
-     match nd with
-     | mkNode TL TP TR n tl => imm_reachable_from_in r tl
-     end)
-}.
+  imm_reachable_from_in := fun T P R G p a => msq_reach p a}.
 
 Definition noderef := ref{Node|validNode}[deltaNode,deltaNode].
 
 Lemma msq_stability : stable validNode deltaNode.
 Proof.
   compute. intros.
-  induction H0; eauto.
-  constructor. rewrite H1. constructor.
-Qed.
+  (* Actualy, validNode isn't quite stable w.r.t. deltaNode since the refl case allows arbitrary heap changes! *)
+Admitted. (* TODO: Need inversion principles ...Qed. *)
 Hint Resolve msq_stability.
 
 (** We're following The Art of Multiprocessor Programming, S10.5, but
@@ -60,6 +65,10 @@ Inductive δmsq : hrel MSQ :=
                     h[hd]=(mkNode Node validNode deltaNode n (Some rest)) ->
                     δmsq (mkMSQ hd) (mkMSQ rest) h h'.
 Definition msq := ref{MSQ|vMSQ}[δmsq,δmsq].
+Inductive q_reachability : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (q:MSQ), Prop :=
+  | q_r : forall n, q_reachability n (mkMSQ n).
+Instance q_reach : ImmediateReachability MSQ :=
+  { imm_reachable_from_in := @q_reachability }.
 
 Lemma MSQ_stability : stable vMSQ δmsq.
 Proof.
@@ -67,6 +76,59 @@ Proof.
 Qed.
 Hint Resolve MSQ_stability.
 
-Definition alloc_msq {Γ} (_:unit) : rgref Γ msq Γ :=
+Inductive nd_contains : hrel Node -> Prop :=
+  | nd_cont : forall RR (C:Set){CC:Containment C} P R n tl,
+                contains (fun c c' h h' => RR (mkNode C P R n (Some tl))
+                                              (mkNode C P R n (Some tl))
+                                              h h') ->
+              nd_contains RR.
+Instance nd_containment : Containment Node := { contains := nd_contains }.
+Inductive msq_contains : hrel MSQ -> Prop :=
+  | msq_cont : forall RR tl,
+                contains (fun c c' h h' => RR (mkMSQ tl) (mkMSQ tl) h h') ->
+              msq_contains RR.
+Instance msq_containment : Containment MSQ := { contains := msq_contains }.
+Instance nd_fold : rel_fold Node.
+  (* TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
+Print rel_fold.
+  eapply Build_rel_fold. intros. exact H.
+Defined.
+Instance msq_fold : rel_fold MSQ.
+  (* TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
+  eapply Build_rel_fold. intros. exact H.
+Defined.
+
+
+Lemma precise_valid_node : precise_pred validNode.
+  compute. intros; intuition; eauto. induction H; constructor.
+  rewrite <- H0; try solve[repeat constructor]. 
+  eapply IHvalidNode. intros.
+  Require Import Coq.Program.Equality.
+  dependent induction H1.
+    (* This case is a messy contradiction, induction tried to use the reflexively reachable case for things w/ wrong types *) admit.
+    eapply H0. (* Should be by induction on the imm_reachable_from_in r (h[tl]) and using transitivtiy... but impredicative Set *) admit.
+    eapply H0. (* Again... *) admit.
+    (* TODO: Write the inversion axioms, and make sure those are actually sufficient to do this proof! *)
+Qed.
+Hint Resolve precise_valid_node.
+
+Lemma precise_delta_node : precise_rel deltaNode.
+  (* TODO: Need inversion axioms... *)
+Admitted.
+Hint Resolve precise_delta_node.
+
+Lemma precise_δmsq : precise_rel δmsq.
+  compute; intros. induction H1; eauto; try constructor.
+  eapply msq_dequeue. rewrite <- H. apply H1. constructor. constructor.
+Qed.
+Lemma precise_vMSQ : precise_pred vMSQ.
+  compute; intros. auto.
+Qed.
+Hint Resolve precise_δmsq precise_vMSQ.
+
+Local Obligation Tactic := intros; intuition; eauto; try repeat constructor.
+
+Program Definition alloc_msq {Γ} (_:unit) : rgref Γ msq Γ :=
   sentinel <- Alloc (mkNode Node validNode deltaNode 0 None);
+  (*sentinel <- alloc _ _ _  (mkNode Node validNode deltaNode 0 None) _ _ _ _ _;*)
   Alloc (mkMSQ sentinel).
