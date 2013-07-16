@@ -177,10 +177,12 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec q =>
     match !q with
     | mkMSQ sent =>
-      Node_rec (fun x o => match o return (!sent=mkNode x o) -> rgref Γ (option nat) Γ with
+      Node_rect (fun _ => _)
+                (fun x o => match o return (!sent=mkNode x o) -> rgref Γ (option nat) Γ with
                            | None => fun _ => rgret None
                            | Some hd => fun _ =>
-                                 Node_rec (fun n tl => success <- CAS(q,mkMSQ sent,mkMSQ hd);
+                                 Node_rect (fun _ => _)
+                                           (fun n tl => success <- CAS(q,mkMSQ sent,mkMSQ hd);
                                                        if success then rgret (Some n) else rec q) (!hd)
                            end eq_refl) (!sent)
     end) q.
@@ -196,7 +198,6 @@ Qed.
 End IndIndAxiomaticHack.
 
 (*
-
 (** Unless we introduce lots of indirections through references to options,
     we're stuck adapting Capretta's impredicative induction-recursion
     encoding to support mutual inductive types indexing each other. *)

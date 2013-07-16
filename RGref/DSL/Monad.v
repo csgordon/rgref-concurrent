@@ -16,7 +16,7 @@ Inductive splits : Set -> Set -> Set -> Prop :=
   | funsp : forall (A B:Set),
                splits (forall x:A, B) (forall x:A, B) (forall x:A, B)
 . 
-Inductive rgref (Γ:tyenv) (T:Set) (Γ':tyenv) : Set :=
+Inductive rgref (Γ:tyenv) (T:Set) (Γ':tyenv) : Type :=
   | mkRGR :  envlist Γ -> T -> envlist Γ' -> (heap -> heap) -> rgref Γ T Γ'.
 
 (* TODO: Really bind should be doing some kind of framing on environments, a subenv type thing. *)
