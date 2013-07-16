@@ -16,7 +16,7 @@ Inductive splits : Set -> Set -> Set -> Prop :=
   | funsp : forall (A B:Set),
                splits (forall x:A, B) (forall x:A, B) (forall x:A, B)
 . 
-Inductive rgref (Γ:tyenv) (T:Set) (Γ':tyenv) : Type :=
+Inductive rgref (Γ:tyenv) (T:Set) (Γ':tyenv) : Set :=
   | mkRGR :  envlist Γ -> T -> envlist Γ' -> (heap -> heap) -> rgref Γ T Γ'.
 
 (* TODO: Really bind should be doing some kind of framing on environments, a subenv type thing. *)
@@ -32,6 +32,7 @@ Program Definition rgref_bind {Γ Γ' Γ'':tyenv}{t t':Set} (a:rgref Γ t Γ') (
 (* TODO: To actually define this properly, bind needs to do framing and ret should use the empty env. *)
 Axiom rgret : forall {Γ:tyenv}{A:Set}(a:A), rgref Γ A Γ .
 (*  := mkRGR Γ A Γ e a e (fun h=>h).*)
+(* (mkRGR ε A ε ∅ a ∅ (fun h => h)). *)
 
 Axiom dropvar : forall {Γ} (v:var) (t:Set) (tm:tymember v t Γ), rgref Γ unit (tyrem tm).
 

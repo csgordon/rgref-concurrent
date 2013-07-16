@@ -10,6 +10,7 @@ Axiom validNode : hpred Node.
 Axiom deltaNode : hrel Node.
 Axiom mkNode : nat -> option (ref{Node|validNode}[deltaNode,deltaNode]) -> Node.
 Axiom Node_rect : forall (P:Node->Type), (forall n o, P (mkNode n o)) -> forall nd, P nd. 
+Definition Node_rec {T:Set} := Node_rect (fun _ => T).
 Inductive validNode' : hpred Node :=
   | nil_next : forall n h, validNode' (mkNode n None) h
   | nil_reach : forall n h tl, validNode' (h[tl]) h ->
@@ -176,12 +177,12 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec q =>
     match !q with
     | mkMSQ sent =>
-      Node_rect (fun _ => _) (fun x o => match o return (!sent=mkNode x o) -> rgref Γ (option nat) Γ with
-                                         | None => fun _ => rgret None
-                                         | Some hd => fun _ =>
-                                               Node_rect (fun _ => _) (fun n tl => success <- CAS(q,mkMSQ sent,mkMSQ hd);
-                                                                                   if success then rgret (Some n) else rec q) (!hd)
-                                         end eq_refl) (!sent)
+      Node_rec (fun x o => match o return (!sent=mkNode x o) -> rgref Γ (option nat) Γ with
+                           | None => fun _ => rgret None
+                           | Some hd => fun _ =>
+                                 Node_rec (fun n tl => success <- CAS(q,mkMSQ sent,mkMSQ hd);
+                                                       if success then rgret (Some n) else rec q) (!hd)
+                           end eq_refl) (!sent)
     end) q.
 Next Obligation. (* δmsq guarantee proof *)
   apply msq_dequeue with (n := x). (* TODO: Follows from appropriate !x=h[x] assumption... *) admit.
@@ -193,6 +194,8 @@ Qed.
 
 
 End IndIndAxiomaticHack.
+
+(*
 
 (** Unless we introduce lots of indirections through references to options,
     we're stuck adapting Capretta's impredicative induction-recursion
@@ -356,4 +359,5 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
                  end
     end
     end).
+*)
 *)
