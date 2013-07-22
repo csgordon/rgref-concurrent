@@ -3,7 +3,7 @@ Require Import RGref.DSL.Concurrency.
 
 (** * A Tail-less Michael-Scott Queue *)
 
-(** ** An attempt at axiomatizing an inductive-inductive definition with an induction principle. *)
+(** ** Axiomatized inductive-inductive definition with an induction principle. *)
 Axiom Node : Set.
 Axiom validNode : hpred Node.
 Axiom deltaNode : hrel Node.
@@ -28,11 +28,15 @@ with deltaNode' : hrel Node :=
                               h h'.
 Axiom validity : validNode ≡p validNode'.
 Axiom delta_eq : deltaNode ⊆⊇ deltaNode'.
+
+
+(** ** General properties of node definitions *)
 Inductive msq_reach : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (a:Node), Prop :=
   | msq_reach_tail : forall p n, msq_reach p (mkNode n (Some p)).
 (* This instance must be defined this way rather than as a naive match on the node
    to avoid eliminating a large data type (the inductive-inductive-hacked Node)
-   into Type *)
+   into Type
+  TODO: Simplify now that we're not using -impredicative-set *)
 Global Instance nd_reach : ImmediateReachability Node := {
   imm_reachable_from_in := fun T P R G p a => msq_reach p a}.
 
@@ -48,15 +52,16 @@ Lemma stable_node' : stable validNode' deltaNode'.
 Qed.
 Hint Resolve stable_node'.
 
-Definition clean_node_ptr : ref{Node|validNode}[deltaNode,deltaNode] -> ref{Node|validNode'}[deltaNode',deltaNode'].
+(*Definition clean_node_ptr : ref{Node|validNode}[deltaNode,deltaNode] -> ref{Node|validNode'}[deltaNode',deltaNode'].
   intros.
   assert (H1 := validity). assert (H2 := delta_eq).
   compute in *. destruct H2.
   eapply convert; eauto. intros; firstorder.
-Defined.
+Defined.*)
 Definition noderef := ref{Node|validNode}[deltaNode,deltaNode].
   
-(** We're following The Art of Multiprocessor Programming, S10.5, but
+(** ** A queue base, for head (and eventually tail) pointer(s).
+    We're following The Art of Multiprocessor Programming, S10.5, but
     temporarily skipping the tail.
     Enqueue appends a single node at the end.
     Dequeue moves the head pointer froma sentinel to sentinel.next, which
@@ -193,4 +198,49 @@ Qed.
 (* TODO: PROBLEM: folding the δmsq restriction through the list when finding the tail to enqueue means δmsq must account for enqueues.
    Currently it doesn't. *)
 
+Require Import RGref.DSL.Fields.
 
+Inductive NFields : Set := val | next.
+Instance nfields : FieldTyping Node NFields.
+Instance nfield_val : FieldType Node NFields val nat := {
+    (*getF := fun v => match v with (mkNode x tl) => x end;*)
+    getF := Node_rec (fun x tl => x);
+    (*setF := fun v fv => match v with (mkNode x tl) => mkNode fv tl end*)
+    setF := fun n v => Node_rec (fun x tl => mkNode v tl) n
+}.
+Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[deltaNode,deltaNode])) := {
+    getF := Node_rec (fun x tl => tl);
+    setF := fun v fv => Node_rec (fun x tl => mkNode x fv) v
+}.
+
+Notation "LinAlloc[ v ] e" := (varalloc' (fun x h => x=e) empty havoc v e ({{{e}}}) _ _ _ _ _) (at level 70).
+Axiom lin_convert : forall {Γ T P R G} v P' R' G'
+                      {mem:tymember v (ref{T|P}[R,G]) Γ},
+                      P'⊑P -> (* refinement weakening *)
+                      G'⊆G -> (* permission weakening *)
+                      R⊆R' -> (* interference weakening *)
+                      G'⊆R' -> (* self-splitting *)
+                      stable P' R' ->
+                      rgref Γ (ref{T|P'}[R',G']) (tyrem mem).
+
+(* TODO: fCAS and CAS need to enforce Safe on the expressions *)
+Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
+  RGFix _ unit (fun loop tl =>
+                  best_tl <- (RGFix _ _ (fun chase tl => match (tl ~> next) with None => rgret tl | Some tl' => chase tl' end) tl) ;
+                  _ <- (LinAlloc[VZero] (mkNode n None) ) ;
+                  (* Really need a refining fCAS, which returns either a success indicator or
+                     a refinement of the r:ref{A|P}[R,G] with refinement P' such that
+                     P∧<CAS failed>⇒ P' and stable P' R. *)
+                  success <- fCAS( best_tl → next , None, Some _ ) ;
+                  (* If the CAS failed, next is not None, but there isn't a great way to extract the Some arg *)
+                  if success then rgret tt else loop (best_tl ~> next)
+               )
+        (match !q with mkMSQ sentinel => sentinel end).
+Next Obligation. compute; eauto. Qed.
+Next Obligation. (* deltaNode *)
+  destruct delta_eq.  apply H3.
+  (* TODO: Need help reducing the setF (def'd in terms of Node_rec) to apply node_append *) Admitted.
+Next Obligation. (* Trying to prove VZero:_,Γ = Γ since I never consumed the LinAlloc result *) Admitted.
+Next Obligation. (* a Set.... probably from field read folding... *) exact (rgfold deltaNode deltaNode). Defined.
+Next Obligation. compute. (* This is the omitted new value *) Admitted.
+Next Obligation. (* Again, env mismatch *) Admitted.

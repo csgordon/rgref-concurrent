@@ -39,6 +39,7 @@ Qed.
 Hint Resolve stable_empty.
 Lemma precise_empty : forall (A:Set)`{ImmediateReachability A}, precise_rel empty.
 Proof. intros; compute; eauto. Qed.
+Hint Resolve precise_empty.
 
 Definition local_imm {A:Set} : hrel A := fun a => fun a' => fun _ => fun _ => a=a'.
 Lemma local_imm_const : forall A, locally_const (@local_imm A).
@@ -114,16 +115,18 @@ Proof. intros. compute[precise_rel rel_or] in *. intuition. eauto. eauto. Qed.
 Require Import Coq.Classes.RelationClasses.
 Global Instance rel_sub_eq_preorder `{A:Set} : PreOrder (@rel_sub_eq A).
 Proof. constructor. firstorder. firstorder. Qed.
+Global Instance pred_sub_eq_preorder `{A:Set} : PreOrder (@pred_sub_eq A).
+Proof. constructor; firstorder. Qed.
 
 Lemma pred_sub_refl : forall T (P:hpred T), P⊑P.
 Proof.
-  compute; eauto.
+  reflexivity.
 Qed.
 Hint Resolve pred_sub_refl.
 
 Lemma rel_sub_refl : forall T (R:hrel T), R⊆R.
 Proof.
-  compute; eauto.
+  reflexivity.
 Qed.
 Hint Resolve rel_sub_refl.
 
