@@ -365,7 +365,10 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
       return (case pc of λ { (mkPair p c) -> valOfE (! c) == k })
 *)
   Program Definition remove {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
-    _.
+    RGFix _ _ (fun rec (_:unit) =>
+                 pc <- locate l k;
+                 _
+              ) _.
   Next Obligation. Admitted.
 (*
     {- This is the TR version of the Hindsight paper -}
