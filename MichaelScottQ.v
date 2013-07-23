@@ -270,6 +270,17 @@ Next Obligation. (* deltaNode *)
   subst tl'.
   destruct H2.
   eapply node_append.
-  (* TODO: Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl)... *)
-Admitted.
-Next Obligation. (* a Set.... probably from field read folding... *) exact (rgfold deltaNode deltaNode). Defined.
+  (* TODO: Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl)... 
+     Could add some assumptions to share_field_CAS guarantee obligation that transfer 
+     non-pointer-equivalence based on incompatible rely/guarantee to the result, e.g.:
+         ∀ P R G (x:ref{aT|P}[R,G]), ¬(G⊆aR)∨¬(aG⊆R) → ¬(s≡x)
+     since if a reference could not have aliased the linear value, it cannot alias the (equivalent)
+     weakened conversion result.
+  *)
+  assert (forall P R G (x:ref{Node|P}[R,G]), not (G⊆empty) \/ (not (havoc⊆R)) -> not (s≡x)) by admit.
+  assert (~ (s ≡ best_tl)). apply H5. left. compute. intros. apply (H6 (mkNode 3 None) (mkNode 3 None) h h). 
+  apply H4. constructor.
+  rewrite non_ptr_eq_based_nonaliasing; eauto.
+Qed.  
+Next Obligation. (* a Set.... probably from field read folding... *) 
+  exact (rgfold deltaNode deltaNode). Defined.
