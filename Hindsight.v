@@ -296,6 +296,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     constructor.
   Qed.
     
+(*
     {- TODO: I feel like the return type might need to be refined to give the relationship between k and the node values -}
     locate : hindsight-list → ⊠ → ● (pair eptr eptr)
     locate l k = case (! l) of λ { (mkHLB H T) ->
@@ -345,3 +346,4 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                   })
               )
               (return)
+*)
