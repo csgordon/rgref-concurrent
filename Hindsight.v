@@ -365,8 +365,28 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
       return (case pc of λ { (mkPair p c) -> valOfE (! c) == k })
 *)
   Program Definition remove {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
+    (* bool changed = false; *)
     RGFix _ _ (fun rec (_:unit) =>
                  pc <- locate l k;
+               (* Remaining pseudo-code from the PODC'10 TR:
+                  atomic {
+                      if (p.n==c && !p.m && !c.m) {
+                          if (c.k != k) return changed
+                          c.m = true;
+                          changed = true;
+                      }
+                  }
+                  atomic {
+                      if (changed) {
+                          if (p.n==c && !p.m) {
+                              p.n = c.n;
+                              return true;
+                          }
+                      }
+                  }
+               *)
+               (* Aside from the complexity of managing the changed flag in the linearizability proof,
+                  this code (the more granular version!) still touches a lot of non-contiguous memory atomically! *)
                  _
               ) _.
   Next Obligation. Admitted.
@@ -380,7 +400,29 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                  (return)
 *)
   Program Definition add {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
-    _.
+    RGFix _ _ (fun rec (_:unit) =>
+                 pc <- locate l k;
+                 match pc with
+                 | (p, c) =>
+                   if inf_eqb _ k (* c.k == k *)
+                   then rgret false
+                   else _
+                          (* Unreasonable pseudocode from PODC paper:
+                             atomic {
+                                 if (p.n == c && !p.m && !c.m) {
+                                     E t = alloc(E);
+                                     t.m = false;
+                                     t.k = k;
+                                     t.n = c; <-- Going to need the CAS+control-flow to do conditional sharing...
+                                     p.n = t;
+                                     return true;
+                                 }
+                             }
+                             This still touches two disjoint locations in the test, allocates a multi-word object, and writes into p.n atomically....
+                             *)
+                              
+                 end
+              ) _.
   Next Obligation. Admitted.
 (*
     mb : Maybe eptr -> Maybe eptr -> Bool
