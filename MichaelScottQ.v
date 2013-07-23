@@ -28,6 +28,8 @@ with deltaNode' : hrel Node :=
                               h h'.
 Axiom validity : validNode ≡p validNode'.
 Axiom delta_eq : deltaNode ⊆⊇ deltaNode'.
+Axiom destruct_node : forall nd, exists n, exists tl, nd = mkNode n tl. (* destruction principle *)
+Axiom compute_node_rect : forall T B x tl, Node_rect T B (mkNode x tl) = B x tl. (* fake computation *)
 
 
 (** ** General properties of node definitions *)
@@ -216,14 +218,35 @@ Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[
 Notation "LinAlloc[ v ] e" := (varalloc' (fun x h => x=e) empty havoc v e ({{{e}}}) _ _ _ _ _) (at level 70).
 Axiom lin_convert : forall {Γ T P R G} v P' R' G'
                       {mem:tymember v (ref{T|P}[R,G]) Γ},
-                      P'⊑P -> (* refinement weakening *)
+                      P⊑P'  -> (* refinement weakening *)
                       G'⊆G -> (* permission weakening *)
                       R⊆R' -> (* interference weakening *)
                       G'⊆R' -> (* self-splitting *)
                       stable P' R' ->
                       rgref Γ (ref{T|P'}[R',G']) (tyrem mem).
+(* Conversion / sharing fCAS *)
+Axiom field_cas_share : forall {Γ T P R G F FT} `{FieldTyping T F}
+                               {aT aP aR aG aP' aR' aG'}
+                               (v:var)
+                                (mem:tymember v (ref{aT|aP}[aR,aG]) Γ),
+                                aP⊑aP' -> (* refinement weakening *)
+                                aG'⊆aG -> (* permission weakening *)
+                                aR⊆aR' -> (* interference weakening *)
+                                aG'⊆aR' -> (* self-splitting *)
+                                stable aP' aR' ->
+                              forall
+                              (r : ref{T|P}[R,G]) (f:F) `{FieldType T F f FT}
+                              (fv0 : FT) (fv' : ref{aT|aP'}[aR',aG'] -> FT),
+                              (forall h v s, h[r]=v -> getF v = fv0 ->
+                                             aP (h[s]) h ->
+                                             G v (setF v (fv' s)) h (heap_write r (setF v (fv' s)) h)) ->
+                              rgref Γ bool (tyrem mem).
+Notation "share_field_CAS( r → f , e , e' , v , mem )" := 
+    (@field_cas_share _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ v mem _ _ _ _ _ r f _ _ e e' _)
+    (at level 65).
 
 (* TODO: fCAS and CAS need to enforce Safe on the expressions *)
+Local Obligation Tactic := intros; eauto with typeclass_instances; repeat constructor; compute; eauto.
 Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
   RGFix _ unit (fun loop tl =>
                   best_tl <- (RGFix _ _ (fun chase tl => match (tl ~> next) with None => rgret tl | Some tl' => chase tl' end) tl) ;
@@ -231,16 +254,22 @@ Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
                   (* Really need a refining fCAS, which returns either a success indicator or
                      a refinement of the r:ref{A|P}[R,G] with refinement P' such that
                      P∧<CAS failed>⇒ P' and stable P' R. *)
-                  success <- fCAS( best_tl → next , None, Some _ ) ;
+                  (*success <- fCAS( best_tl → next , None, Some _ ) ;*)
+                  success <- share_field_CAS( best_tl → next , None, (fun tl => Some tl) , VZero , TFirst VZero _ _) ;
                   (* If the CAS failed, next is not None, but there isn't a great way to extract the Some arg *)
                   if success then rgret tt else loop (best_tl ~> next)
                )
         (match !q with mkMSQ sentinel => sentinel end).
-Next Obligation. compute; eauto. Qed.
+Next Obligation. intros; subst. destruct H0. subst. destruct (validity (mkNode n None) h). apply H2. constructor. Qed.
+Next Obligation. intros; exfalso; assumption. Qed.
 Next Obligation. (* deltaNode *)
-  destruct delta_eq.  apply H3.
-  (* TODO: Need help reducing the setF (def'd in terms of Node_rec) to apply node_append *) Admitted.
-Next Obligation. (* Trying to prove VZero:_,Γ = Γ since I never consumed the LinAlloc result *) Admitted.
+  intros. destruct delta_eq. apply H4.
+  destruct (destruct_node v) as [n' [tl' H']]. rewrite H' in *. clear H'.
+  simpl in H1. compute in H1.
+  rewrite compute_node_rect in *.
+  subst tl'.
+  destruct H2.
+  eapply node_append.
+  (* TODO: Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl)... *)
+Admitted.
 Next Obligation. (* a Set.... probably from field read folding... *) exact (rgfold deltaNode deltaNode). Defined.
-Next Obligation. compute. (* This is the omitted new value *) Admitted.
-Next Obligation. (* Again, env mismatch *) Admitted.
