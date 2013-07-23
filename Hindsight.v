@@ -62,7 +62,10 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Axiom mkE : ⊠ -> bool -> option (ref{E|invE}[deltaE,deltaE]) -> E.
   Axiom destruct_E : forall (e:E), exists n m tl, e = mkE n m tl.
   Axiom E_rect : forall (T:E->Type) (body:forall n m tl, T (mkE n m tl)) (e:E), T e.
+  Axiom E_rect' : forall (e:E) (T:E->Type) (body:forall n m tl (pf:e=mkE n m tl), T (mkE n m tl)), T e.
   Axiom E_rect_red : forall T body n m tl, E_rect T body (mkE n m tl) = body n m tl.
+  Axiom E_rect'_red : forall T  n' m' tl' (body:forall n m tl, mkE n' m' tl'=mkE n m tl -> T (mkE n m tl)),
+                        E_rect' (mkE n' m' tl') T body = body n' m' tl' (eq_refl (mkE n' m' tl')).
   Axiom mkE_inj : forall n n' m m' tl tl', mkE n m tl = mkE n' m' tl' -> n=n' /\ m=m' /\ tl=tl'.
   Ltac injectE :=
     match goal with
@@ -243,6 +246,18 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     eapply deltaE_remove. eauto. rewrite <- H. eauto. repeat constructor.
   Qed.
   Hint Resolve precise_deltaE.
+  Lemma refl_deltaE : hreflexive deltaE.
+  Proof.
+    fixdefs.
+    compute. intros.
+    assert (Htmp := destruct_E x).
+    destruct Htmp as [n [m [tl H]]].
+    rewrite H.
+    clear H.
+    constructor.
+    induction tl; eauto.
+  Qed.
+  Hint Resolve refl_deltaE.
 
   (** At this point, I need more type class instances.... Really folding only makes sense for
       fully parametric types like pairs.  Per-field folding makes sense for everything
@@ -296,6 +311,30 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     constructor.
   Qed.
     
+  Check @convert_P.
+  Program Definition locate {Γ} (l:hindsight_list) (k:⊠) : rgref Γ (eptr * eptr) Γ :=
+    match !l with
+      | mkHLB H T =>
+        E_rect' (!H) (fun _ => rgref Γ (eptr * eptr) Γ)
+               (fun n m next pf => match next with
+                                    | None => False_rect _ _ (* TODO: Contradiction *)
+                                    | Some tl =>
+                                      RGFix _ _
+                                            (fun rec x =>
+                                               match x with
+                                               | (p, c) => if (valOfE (!c) ≪≪ k)
+                                                           then rec (c, _) (* TODO: convert option eptr to an eptr, provable since k ≪≪ ∞ *)
+                                                           else rgret (p, c)
+                                               end
+                                            )
+                                            ((@convert_P _ _ invE _ _ _ _ _ _ H), tl)
+                                  end)
+    end
+  .
+  Next Obligation. Admitted. (* folding.. *)
+  Next Obligation. (* Now with tie b/t ! and some heap, can invalidate the None using head_props *) Admitted.
+  Next Obligation. eapply pred_and_proj1; eauto. Qed.
+
 (*
     {- TODO: I feel like the return type might need to be refined to give the relationship between k and the node values -}
     locate : hindsight-list → ⊠ → ● (pair eptr eptr)
@@ -313,12 +352,22 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                                          else return (mkPair false (mkPair p c))
                       }) (λ x → return {!!})
                  }}
+*)
 
+  Program Definition contains {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
+    pc <- locate l k;
+    rgret (inf_eqb (valOfE (!(snd pc))) k).
+
+(*
     contains : hindsight-list → ⊠ → ● Bool
     contains l k =
       pc ← locate l k ,
       return (case pc of λ { (mkPair p c) -> valOfE (! c) == k })
-
+*)
+  Program Definition remove {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
+    _.
+  Next Obligation. Admitted.
+(*
     {- This is the TR version of the Hindsight paper -}
     remove : hindsight-list -> ⊠ -> ● Bool
     remove l k = loop-cont false (λ changed ->
@@ -326,6 +375,11 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                      {!!}
                  )
                  (return)
+*)
+  Program Definition add {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
+    _.
+  Next Obligation. Admitted.
+(*
     mb : Maybe eptr -> Maybe eptr -> Bool
     mb (just x) (just x') = x ≈ x'
     mb _ _ = false
