@@ -28,11 +28,11 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
      - DONE - φH: head is non-null
      - DONE - φT: tail is non-null
      - DONE - φTn : The tail node has no successor
-     - .... - φn : Every node other than the tail has a successor
+     - DONE - φn : Every node other than the tail has a successor
      - DONE - φ∞ : Key of the tail is ∞
      - DONE - φ-∞ : Key of the head is -∞
      - DONE - φ< : Key of each node is < key of successor
-     - .... - φrT : tail node is reachable from every node
+     - IMPL - φrT : tail node is reachable from every node
      - IMPL - φac : list is acyclic (seems to follow from φrT and φTn...)
      - IMPL - φs : The list is sorted (seems to follow from φ<)
      -- Slight modification.  The PODC paper gives the following:
@@ -101,10 +101,12 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                       h[tl] = (mkE n' true (Some tl')) -> (* note initial heap *)
                       deltaE'  (mkE n false (Some tl)) (mkE n false (Some tl')) h h'
   with invE' : hpred E :=
-    pf_invE : forall h n m next,
+  | tl_invE : forall h, invE' (mkE ∞ false None) h
+  | pf_invE : forall h n m tl,
                 (* φ_< : The key of every node is smaller than the key of its successor *)
-                (match next with None => True | Some tl => exists n', n ≪ n' /\ valOfE (h[tl])=n' end) ->
-                invE' (mkE n m next) h.
+                (* φ_n : Every node other than the tail has a successor (implicit in tl's type + tl_invE) *)
+                (exists n', n ≪ n' /\ valOfE (h[tl])=n') ->
+                invE' (mkE n m (Some tl)) h.
   (* Let's try just baking equality in since we're equating elements of Prop anyways, rather than the iff used in other examples. *)
   Axiom inv : invE = invE'.
   Axiom delt : deltaE = deltaE'.
@@ -138,29 +140,26 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Proof.
     fixdefs.
     red; intros.
-    induction H0; inversion H; repeat injectE; subst; eauto.
-        (*refl*) induction nxt; constructor; eauto.
-                 destruct H2. destruct H1. exists x. intuition. rewrite H0; eauto.
-        (*mark*) destruct H2; destruct H1; eexists; intuition. exists x. rewrite <- H2 in *. eauto. 
-        (*ins*) destruct H3. destruct H2. constructor. exists n'. intuition. rewrite H0. compute.
-                 rewrite E_rect_red.
-                 reflexivity.
-        (*rm *) constructor.
+    induction H0; inversion H; repeat injectE; subst; eauto; try solve[constructor];
+       try match goal with
+             | [ H : None = Some _ |- _ ] => inversion H
+             | [ H : Some _ = Some _ |- _ ] => inversion H; subst; clear H
+           end.
+        (*refl*) setoid_rewrite <- H0 in H2. constructor; eauto.
+        (*mark*) constructor. setoid_rewrite H0; eauto.
+        (*ins*)  constructor. exists n'. intuition. rewrite H0. compute; rewrite E_rect_red. reflexivity.
+        (*rm*)   constructor.
                  assert (Htmp := heap_lookup2 h' tl').
                  assert (Htmp' : invE' (h' [tl']) h'). rewrite <- inv. assumption.
                  clear Htmp. inversion Htmp'; subst.
-                 exists n'; intuition.
+                 (* tail node *) exists ∞. compute; rewrite E_rect_red. intuition.
+                                 (* Issue connection h[tl'] and h'[tl']; with that connection, could prove
+                                    n ≪ n' ≪ ∞. *) admit.
+                 (* other node *)
+                 exists n0; intuition; compute; try rewrite E_rect_red; auto.
                  (* The issue is that we don't presently have any explicit connection between h[tl'] and h'[tl'].
                     They should either be the same (in this case definitely, but proving the acyclicity etc. is hard)
                     or constrained by the R on tl', which in this case is [deltaE invE], which preserves n. *)
-
-                 (*destruct H1. destruct H1. constructor.
-                 rewrite H0 in H2. compute in H2. subst.
-                 assert (Htmp := heap_lookup2 h tl). inversion Htmp; subst.
-                 assert (Htmp' := heap_lookup2 h tl'). inversion Htmp'; subst.
-                 rewrite H0 in Htmp. inversion Htmp. crunchE.
-                 destruct H6. destruct H6.
-                 exists x0. split. apply (ii_lt_trans n x); eauto.*)
   Admitted.
   Hint Resolve stable_nodes.
   Lemma stable_tail : stable tail_props deltaE.
@@ -169,8 +168,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     red; intros.
     Require Import Coq.Program.Equality.
     dependent induction H0; inversion H; subst; repeat injectE; subst; eauto; try constructor.
-    inversion H4. inversion H5. (* <-- Can't append when next is already Some *)
-    inversion H4. inversion H5. 
+    inversion H4. inversion H5. inversion H5. 
   Qed.
   Hint Resolve stable_tail.
   Lemma stable_head : stable head_props deltaE.
@@ -223,7 +221,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Lemma precise_invE : precise_pred invE.
   Proof.
     fixdefs.
-    red. intros. inversion H. induction next; subst; try solve[constructor; eauto].
+    red. intros. inversion H; subst. constructor.
     constructor. rewrite <- H0. assumption. constructor. constructor.
   Qed.
   Lemma precise_tail : precise_pred tail_props.
