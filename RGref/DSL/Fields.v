@@ -86,7 +86,7 @@ Axiom array_read : forall {n:nat}{T:Set}, Array n T -> fin n -> T.
 Axiom array_write : forall {n:nat}{T:Set}, Array n T -> fin n -> T -> Array n T.
 
 Axiom array_map : forall {n:nat}{T:Set}{B:Set}, (T->B) -> Array n T -> Array n B.
-
+Axiom array_id_update : forall {n T} (a:Array n T) f, array_write a f (array_read a f) = a.
 Axiom read_fresh_array : forall n T e f, array_read (new_array n T e) f = e.
 Axiom read_updated_cell : forall n T (a:Array n T) f e, array_read (array_write a f e) f = e.
 Axiom read_past_updated_cell: 
@@ -128,6 +128,8 @@ Global Instance array_field_index {n:nat}{T:Set}{f:fin n} : FieldType (Array n T
   getF := fun v => array_read v f;
   setF := fun v fv => array_write v f fv
 }.
+
+Axiom indep_array : forall {Γ} (n:nat) {T:Set}, (forall (i:nat), i<n -> rgref Γ T Γ) -> rgref Γ (Array n T) Γ.
 
 End Arrays.
 
