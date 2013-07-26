@@ -94,8 +94,38 @@ Next Obligation.
      stitch those together for an array-wide refinement... *)
 Admitted.
 
+(* This will show up with any array read. *)
+Lemma uf_folding : forall n, rgfold (δ n) (δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
+Proof.
+  intros. simpl.
+  f_equal. eapply rgref_exchange; try solve [compute; eauto].
+  split; red; intros.
+      destruct H; auto.
+      split; auto. intros. inversion H; subst. rewrite array_id_update.
+      (* Hmm, this ought to be true... should depend on δ's defn, and δ should be local... *) admit.
+Qed.
+Hint Resolve uf_folding.
+Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
+Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
+
+Require Import Coq.Arith.Arith.
+Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) (oldrank:nat) (y:Fin.t n) (newrank:nat) : rgref Γ bool Γ :=
+  let old := (A ~> x) in
+  if (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
+          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
+  then rgret false
+  else (
+      new <- alloc any local_imm local_imm (mkCell n newrank y) _ _ _ _ _ ; (*Alloc (mkCell n newrank y);*)
+      fCAS(A → x, old, new)
+  )
+.
+Next Obligation. (* TODO: UpdateRoot doesn't carry enough information yet to prove δ.
+                    Maybe we need to refine something (A? old?) to say x is not its own parent,
+                    in such a way as to provide enough information to prove the union case of δ. *)
+Admitted.
+
 (* TODO: Path compression *)
-Program Definition find {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (f:Fin.t n) : rgref Γ (Fin.t n) Γ :=
+Program Definition Find {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (f:Fin.t n) : rgref Γ (Fin.t n) Γ :=
   RGFix _ _ (fun find_rec f =>
                let c : (ref{cell n|any}[local_imm,local_imm]) := (r ~> f) in
                let p := c ~> parent in
@@ -104,11 +134,42 @@ Program Definition find {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (f:Fin.t n) : rgre
                else find_rec p
             ) f
   .
-Next Obligation.
-  f_equal. eapply rgref_exchange; try solve [compute; eauto].
-  split; red; intros.
-      destruct H; auto.
-      split; auto. intros. inversion H; subst. rewrite array_id_update.
-      (* Hmm, this ought to be true... should depend on δ's defn, and δ should be local... *) admit.
-Qed.
 
+Require Import Coq.Arith.Bool_nat.
+Definition gt x y := nat_lt_ge_bool y x.
+
+Definition ignore {Γ Γ' T} (C:rgref Γ T Γ') : rgref Γ unit Γ' :=
+  _ <- C;
+  rgret tt.
+
+Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : rgref Γ unit Γ :=
+  RGFix _ _ (fun TryAgain _ =>
+               x' <- Find r x;
+               y' <- Find r y;
+               if (fin_beq x' y')
+               then rgret tt
+               else (
+                   (* TODO: revisit for non-atomic multiple reads, sequencing *)
+                   xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
+                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r x (@array_fields n _) (@array_field_index n _ x))
+                                          rank _ (@cell_rank n));
+                   yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
+                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r y (@array_fields n _) (@array_field_index n _ y))
+                                          rank _ (@cell_rank n));
+                   _ <-
+                   (if (orb (gt xr yr)
+                           (andb (beq_nat xr yr)
+                                 (gt (to_nat x) (to_nat y))))
+                   then _ (* TODO: Swap(x,y); Swap(xr,yr); <-- Is this updating imperative variables? *)
+                   else rgret tt) ;
+                   ret <- UpdateRoot r x xr y yr;
+                   if ret
+                   then TryAgain tt
+                   else if (beq_nat xr yr)
+                        then ignore (UpdateRoot r y yr y (yr + 1))
+                        else rgret tt
+                   
+               )
+            )
+        tt.
+  
