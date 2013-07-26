@@ -39,7 +39,17 @@ Proof.
                         inversion y; subst. unfold fin_beq in *. simpl in *. eapply IHx. reflexivity.
                         unfold fin_beq in *; simpl in *. eapply IHx. reflexivity.
 Qed.
-
+Definition fin_lt {n:nat} (x y:Fin.t n) : bool :=
+  Fin.rect2 (fun _ _ _ => bool)
+            (* F1 F1 *) (fun _ => false)
+            (* F1 FS *) (fun _ _ => true)
+            (* FS F1 *) (fun _ _ => false)
+            (* FS FS *) (fun _ _ _ rec => rec) x y.
+Program Lemma fin_lt_nat : forall n (x y:Fin.t n), @fin_lt n x y = true <-> (to_nat x) < to_nat y.
+Proof.
+  (* Stuck in Fin.t indexing hell *)
+Admitted.
+  
 Inductive root (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Fin.t n -> Prop :=
   | self_root : (getF (h[x<|i|>])) = i ->
                 root n x h i i
@@ -57,13 +67,28 @@ Inductive φ (n:nat) : hpred (uf n) :=
   pfφ : forall x h,
           (forall i, terminating_ascent n x h i) ->
           φ n x h.
+
+Lemma ascent_root : forall n x h i, terminating_ascent n x h i -> exists r, root n x h i r.
+Proof.
+  intros. induction H. exists i; constructor; eauto.
+  destruct IHterminating_ascent. exists x0. eapply trans_root; eauto.
+Qed.
+
 Inductive δ (n:nat) : hrel (uf n) :=
-    (* Technically this permits path extension as well as path compression... *)
+    (* Technically this permits path extension as well as path compression...
+       and permits creating a cycle... *)
   | path_compression : forall x f c h h' (rt:Fin.t n),
                          root n x h f rt ->
                          root n x h (getF (h[c])) rt ->
                          δ n x (array_write x f c) h h'
-  (* | path_union : ... need to review how rank is used *)
+  (* Union sets the parent and rank of a self-parent *)
+  | path_union : forall A x xp xr c h h' y xr' yr yp,
+                   root n A h x x ->
+                   h[(array_read A x)] = mkCell n xr xp ->
+                   h[c] = mkCell n xr' y ->
+                   h[(array_read A y)] = mkCell n yr yp ->
+                   xr < yr \/ (xr=yr /\ (proj1_sig (to_nat x) < proj1_sig (to_nat y))) ->
+                   δ n A (array_write A x c) h h'
 .
                          
 Axiom stable_φ_δ : forall n, stable (φ n) (δ n).
@@ -78,9 +103,23 @@ Proof.
   eapply trans_ascent. rewrite <- H0; eauto.
   constructor. compute. eexists; reflexivity.
 Qed.
-Axiom precise_δ : forall n, precise_rel (δ n).
+Lemma precise_δ : forall n, precise_rel (δ n).
+Admitted.
 Hint Resolve precise_φ precise_δ.
-Axiom refl_δ : forall n, hreflexive (δ n).
+Lemma refl_δ : forall n, hreflexive (δ n).
+Proof.
+  intros; red; intros.
+  induction n. (* 0-sized array.... useless, but illegal? *) admit.
+  rewrite <- (array_id_update x (@F1 _)) at 2 .
+  (* TODO: This seems to require knowledge that x is wf *) assert (φ _ x h) by admit.
+  inversion H; subst. specialize (H0 (@F1 _)).
+  assert (Htmp := ascent_root _ _ _ _ H0). destruct Htmp.
+  eapply path_compression; try eassumption.
+  induction H1.
+  rewrite H1. eapply self_root; eauto.
+  rewrite H2. assumption.
+Qed.
+  
 Hint Resolve refl_δ.
 
 Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf n|φ n}[δ n, δ n]) Γ :=
@@ -173,3 +212,13 @@ Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : r
             )
         tt.
   
+Program Definition Sameset {Γ n} (A:ref{uf n|φ n}[δ n,δ n]) x y :=
+  RGFix _ _ (fun TryAgain _ =>
+               x <- Find A x;
+               y <- Find A y;
+               if (fin_beq x y)
+               then rgret true
+               else (if fin_beq ((@field_read _ _ _ _ _ _ _ _ (@uf_folding n) _ A x _ (@array_field_index n _ x)) ~> parent) x
+                     then @rgret Γ _ false
+                     else TryAgain tt)
+            ) tt.
