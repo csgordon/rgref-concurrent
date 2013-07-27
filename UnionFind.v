@@ -189,8 +189,94 @@ Next Obligation.
   eapply path_compression.  eassumption.
   rewrite conversion_P_refeq.
   assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H3; eauto. simpl @getF.
+
+  inversion H1.
+      subst f0.
+      assert (forall zz,
+                @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
+               parent _ (@cell_parent n) = x).
+          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+      rewrite H5. rewrite H5. apply self_root. assumption.
+
+      subst r0.
+      assert (forall zz,
+                @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r f0 _ (@array_field_index n _ f0))
+               parent _ (@cell_parent n) = t).
+          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+      rewrite H6. 
+
+      inversion H4.
+          subst t.
+          assert (forall zz,
+                    @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+                     (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
+                   parent _ (@cell_parent n) = x).
+              (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+          rewrite H5. constructor. assumption.
+          subst r0.
+          assert (forall zz,
+                    @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+                     (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r t _ (@array_field_index n _ t))
+                   parent _ (@cell_parent n) = t0).
+              (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+          rewrite H9. assumption.
+Qed.
+(* Alternative approach... Unsure if the getF (h[X]) = X ~> F are provable or sound axioms that should
+   come from somewhere (either above or below)...
+
+  induction H1.
+  assert (root n (h[r]) h i i). constructor. assumption.
+  eapply trans_root. eassumption. 
+      rewrite <- H1. repeat f_equal. rewrite H1. rewrite H0 in H1.
+      inversion H4. clear H6. 
+      unfold Find_obligation_1  in *.
+      unfold Find_obligation_2  in *.
+      unfold Find_obligation_3  in *.
+      unfold Find_obligation_4  in *.
+      unfold Find_obligation_5  in *.
+      unfold Find_obligation_11 in *.
+      unfold Find_obligation_12 in *.
+      unfold Find_obligation_13 in *.
+      unfold Find_obligation_14 in *.
+      unfold Find_obligation_15 in *.
+      assert (forall x,
+                @field_read _ _ _ _ _ _ _ _ x (@local_imm_refl _) 
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r i _ (@array_field_index n _ i))
+               parent _ (@cell_parent n) = i).
+          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+      rewrite H6. apply H6.
+      assert (forall x,
+                @field_read _ _ _ _ _ _ _ _ x (@local_imm_refl _) 
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r i _ (@array_field_index n _ i))
+               parent _ (@cell_parent n) = i).
+          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+      rewrite H8. apply H8.
+
+      (* We now know that i's parent is t, and t's parent is t. *)
+      assert (t=i). 
+          (* TODO: I'm not 100% certain this is true... *)
+          admit.
+      rewrite H5 in *.
+      eapply IHroot; eauto.
+Qed. *)
+(*
+      eapply trans_root. eapply IHroot.
+      (* Missing connection between h[r]<|X|>=r~>X *) admit.
+      trivial. intros.
+      specialize (IHroot c').
+      apply IHroot.
+
+
+simpl. simpl in H1
+simpl in H1.
+  eapply (trans_root _ _ _ _ ((@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r f0 _ _) ~> parent)).
+  eapply trans_root. apply H1. simpl.
+  simpl.
   (* TODO: ... *)
 Admitted.
+*)
 
 Require Import Coq.Arith.Bool_nat.
 Definition gt x y := nat_lt_ge_bool y x.
