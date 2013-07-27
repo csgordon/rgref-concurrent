@@ -170,9 +170,24 @@ Program Definition Find {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (f:Fin.t n) : rgre
                let p := c ~> parent in
                if (fin_beq p f)
                then rgret f
-               else find_rec p
+               else (
+                   c' <- Alloc! (mkCell n (let _ := @cell_rank n in c ~> rank) 
+                                         ((@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r p _ _) ~> parent ) ) ;
+                   _ <- fCAS( r → f, c, convert_P _ _ _ c');
+                   find_rec p
+               )
             ) f
   .
+Next Obligation. exact any. Defined.
+Next Obligation. unfold Find_obligation_5. eauto. Qed.
+Next Obligation. intuition. Qed.
+Next Obligation. unfold Find_obligation_5. eauto. Qed.
+Next Obligation.
+  unfold Find_obligation_5 in *.
+  assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
+  eapply path_compression. 
+  edestruct ascent_root; eauto.
+Admitted.
 
 Require Import Coq.Arith.Bool_nat.
 Definition gt x y := nat_lt_ge_bool y x.
