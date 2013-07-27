@@ -154,7 +154,7 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) 
           (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
   then rgret false
   else (
-      new <- alloc any local_imm local_imm (mkCell n newrank y) _ _ _ _ _ ; (*Alloc (mkCell n newrank y);*)
+      new <- alloc any local_imm local_imm (mkCell n newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
       fCAS(A → x, old, new)
   )
 .
@@ -185,8 +185,11 @@ Next Obligation. unfold Find_obligation_5. eauto. Qed.
 Next Obligation.
   unfold Find_obligation_5 in *.
   assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
-  eapply path_compression. 
-  edestruct ascent_root; eauto.
+  edestruct ascent_root. apply H.
+  eapply path_compression.  eassumption.
+  rewrite conversion_P_refeq.
+  assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H3; eauto. simpl @getF.
+  (* TODO: ... *)
 Admitted.
 
 Require Import Coq.Arith.Bool_nat.
