@@ -282,19 +282,52 @@ Global Instance list_pure `{A:Set,PA:pure_type A} : pure_type (list A).
 
 (** ** Additional Axioms
     Things like heap dereference being the same between converted and unconverted references, etc. *)
+(** If we have a reference in hand, it should be valid and self-splitting as long as our allocation
+    and conversion axioms are correct. *)
+Axiom existing_ref_wf_split: forall T P R G (r:ref{T|P}[R,G]), G ⊆ R.
+Axiom existing_ref_wf_prec_R: forall T `{ImmediateReachability T} P R G (r:ref{T|P}[R,G]), precise_rel R.
+Axiom existing_ref_wf_prec_G: forall T `{ImmediateReachability T} P R G (r:ref{T|P}[R,G]), precise_rel G.
+Axiom existing_ref_wf_prec_P: forall T `{ImmediateReachability T} P R G (r:ref{T|P}[R,G]), precise_pred P.
+Axiom existing_ref_wf_stable: forall T P R G (r:ref{T|P}[R,G]), stable P R.
 (** For now we need an explicit subtyping operator *)
-Axiom convert_P : forall {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A},(forall v h, P v h -> P' v h) -> precise_pred P' -> stable P' R -> ref{A|P}[R,G] -> ref{A|P'}[R,G].
-Axiom convert_G : forall {A:Set}{P:hpred A}{R G G':hrel A}`{ImmediateReachability A}, precise_rel G' -> (G' ⊆ G) -> ref{A|P}[R,G] -> ref{A|P}[R,G'].
-Axiom conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x, h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
 Axiom convert : forall {A:Set}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A},
                 ref{A|P}[R,G] ->
                 (forall v h, P v h -> P' v h) ->
                 (G' ⊆ G) -> (R ⊆ R') -> stable P' R' -> 
                 (G' ⊆ R') -> (* <-- self-splitting, this is a pure conversion *)
+                precise_pred P' -> precise_rel R' -> precise_rel G' ->
                 ref{A|P'}[R',G'].
 Axiom convert_equiv : forall {A}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A}
-                             (r:ref{A|P}[R,G]) pfP pfG pfR stab splt,
-                             forall h, h[r]=h[@convert A P P' R R' G G' _ r pfP pfG pfR stab splt].
+                             (r:ref{A|P}[R,G]) pfP pfG pfR stab splt prP prR prG,
+                             forall h, h[r]=h[@convert A P P' R R' G G' _ r pfP pfG pfR stab splt prP prR prG].
+Program Definition convert_P {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A} 
+                             (impl:forall v h, P v h -> P' v h)
+                             (prec:precise_pred P') (stbl:stable P' R) (r:ref{A|P}[R,G]) : ref{A|P'}[R,G] :=
+          convert r impl _ _ stbl _ _ _ _
+.
+Next Obligation. compute; auto. Qed.
+Next Obligation. compute; auto. Qed.
+Next Obligation. eapply existing_ref_wf_split; eassumption. Qed.
+Next Obligation. eapply existing_ref_wf_prec_R; eassumption. Qed.
+Next Obligation. eapply existing_ref_wf_prec_G; eassumption. Qed.
+
+Program Definition convert_G {A:Set}{P:hpred A}{R G G':hrel A}`{ImmediateReachability A}
+                             (prG:precise_rel G') (sub:G' ⊆ G) (r:ref{A|P}[R,G]) : ref{A|P}[R,G'] :=
+          convert r _ sub _ _ _ _ _ _
+.
+Next Obligation. compute; auto. Qed.
+Next Obligation. eapply existing_ref_wf_stable; eassumption. Qed.
+Next Obligation. 
+  intros x x' h h'. intros Hg. compute in sub. specialize (sub x x' h h' Hg).
+  eapply existing_ref_wf_split; eauto.
+Qed.
+Next Obligation. eapply existing_ref_wf_prec_P; eauto. Qed.
+Next Obligation. eapply existing_ref_wf_prec_R; eauto. Qed.
+
+Lemma conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x,
+ h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
+Proof. intros. unfold convert_P. symmetry. eapply convert_equiv.
+Qed.
 
 Axiom refine_ref : forall {A:Set}{P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
                    (r : ref{A|P}[R,G])

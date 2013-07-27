@@ -115,8 +115,9 @@ Axiom alloc : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{F
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
+                G ⊆ R ->
                 rgref Γ (ref{T|P}[R,G]) Γ.
-Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _) (at level 70).
+Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _ _) (at level 70).
 (** Sometimes it is useful to refine P to give equality with the allocated value, which
     propagates assumptions and equalities across "statements." *)
 Axiom alloc' : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T) (meta_e:T),
@@ -125,8 +126,9 @@ Axiom alloc' : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
+                G ⊆ R ->
                  rgref Γ (ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G]) Γ.
-Notation "Alloc! e" := (alloc' _ _ _ e ({{{e}}}) _ _ _ _ _) (at level 70).
+Notation "Alloc! e" := (alloc' _ _ _ e ({{{e}}}) _ _ _ _ _ _) (at level 70).
                                  
 
   

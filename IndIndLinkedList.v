@@ -90,7 +90,7 @@ Next Obligation. intros. rewrite <- (H1 x x' h h'); eauto. Qed.
 Program Definition cons { Γ } n (tl meta_tl:list) 
   : rgref Γ (ref{rgrList|any⊓(fun l h => locally_const list_imm -> l=rgrl_cons n (convert_P _ _ _ _))}[list_imm,list_imm]) Γ :=
   (*Alloc! (rgrl_cons' rgrList' P list_imm list_imm n (convert_P _ _ _ tl)).*)
-  alloc' _ _ _ (rgrl_cons n (convert_P _ _ _ tl)) (rgrl_cons n (convert_P _ _ _ meta_tl)) _ _ _ _ _.
+  alloc' _ _ _ (rgrl_cons n (convert_P _ _ _ tl)) (rgrl_cons n (convert_P _ _ _ meta_tl)) _ _ _ _ _ _.
 Check cons.
 Notation "'RGCons' n tl ::" := (@cons _ n tl ({{{tl}}})) (at level 100).
 

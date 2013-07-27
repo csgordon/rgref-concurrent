@@ -63,7 +63,7 @@ Program Definition push_ts {Γ} : ts -> nat -> rgref Γ unit Γ :=
     success <- CAS(s,tl,Some (convert new_node (fun v h (pf:v=mkNode n tl) => I)
                                                (rel_sub_refl _ local_imm)
                                                (rel_sub_refl _ local_imm) _ 
-                                               (rel_sub_refl _ local_imm)));
+                                               (rel_sub_refl _ local_imm) _ _ _));
     if success then rgret tt else rec s n).
 Next Obligation.
   f_equal. intros. rewrite H. reflexivity.
