@@ -140,9 +140,10 @@ Proof.
   f_equal. eapply rgref_exchange; try solve [compute; eauto].
   split; red; intros.
       destruct H; auto.
-      split; auto. intros. inversion H; subst. rewrite array_id_update.
-      (* Hmm, this ought to be true... should depend on δ's defn, and δ should be local... *) admit.
-Qed.
+      split; auto. intros. inversion H; subst.
+      (* Need to destruct an application of ascent_root... *)
+      eapply path_compression; try  rewrite array_id_update.
+Admitted.
 Hint Resolve uf_folding.
 Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
 Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
@@ -182,6 +183,21 @@ Next Obligation. exact any. Defined.
 Next Obligation. unfold Find_obligation_5. eauto. Qed.
 Next Obligation. intuition. Qed.
 Next Obligation. unfold Find_obligation_5. eauto. Qed.
+
+Axiom field_projection_commutes : 
+    forall h F T P R G Res (r:ref{T|P}[R,G]) f
+           (rf:rel_fold T) (rgf:@rgfold T rf R G = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@fold T rf R G (h[r])) T rgf))
+              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
+Axiom field_projection_commutes' : 
+    forall h F T P R G Res (r:ref{T|P}[R,G]) f
+           (rf:rel_fold T) (rgf:@rgfold T rf R G = T)
+           `(forall x, (eq_rec _ (fun x => x) (fold x) T rgf) = x)
+           (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (h[r]))
+              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
+Check field_projection_commutes'.
+      
 Next Obligation.
   unfold Find_obligation_5 in *.
   assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
@@ -196,7 +212,10 @@ Next Obligation.
                 @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
                  (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
                parent _ (@cell_parent n) = x).
-          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+          intros. rewrite <- field_projection_commutes' with (h := h) (f := parent).
+                  rewrite <- field_projection_commutes' with (h := h) (f := x).
+                  apply H4.
+                  (* Can't induct / destruct / invert on zz *) admit. admit.
       rewrite H5. rewrite H5. apply self_root. assumption.
 
       subst r0.
