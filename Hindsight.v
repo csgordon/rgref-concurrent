@@ -75,6 +75,13 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Definition valOfE (e:E) : ⊠ := E_rect (fun _ => ⊠) (fun n m tl => n) e.
   Definition markedOfE (e:E) : bool := E_rect (fun _ => bool) (fun n m tl => m) e.
   Definition nextOfE (e:E) := E_rect (fun _ => _) (fun n m tl => tl) e.
+
+  Inductive F : Set := data | mark | nxt.
+  Instance hs_node_fields : FieldTyping E F.
+  Instance e_val : FieldType E F data ⊠ := { getF := fun e => valOfE e; setF := fun e x => mkE x (markedOfE e) (nextOfE e) }.
+  Instance e_mark : FieldType E F mark bool := { getF := fun e => markedOfE e; setF := fun e x => mkE (valOfE e) x (nextOfE e) }.
+  Instance e_nxt : FieldType E F nxt _ := { getF := fun e => nextOfE e; setF := fun e x => mkE (valOfE e) (markedOfE e) x }.
+
   Inductive deltaE' : hrel E :=
   (* Implicitly:
      - δk : The key of a node does not change
@@ -234,7 +241,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Proof.
     fixdefs.
     red; intros. inversion H1; subst; try constructor.
-    induction nxt; eauto. rewrite <- H0. rewrite <- H. eauto. repeat constructor. repeat constructor.
+    induction nxt0; eauto. rewrite <- H0. rewrite <- H. eauto. repeat constructor. repeat constructor.
     rewrite <- H0. rewrite <- H. eauto. repeat constructor. repeat constructor.
     eapply deltaE_insert. rewrite <- H0. eauto. repeat constructor. eauto.
     eapply deltaE_remove. eauto. rewrite <- H. eauto. repeat constructor.
@@ -409,7 +416,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                  pc <- locate l k;
                  match pc with
                  | (p, c) =>
-                   if inf_eqb _ k (* c.k == k *)
+                   if inf_eqb (c ~> data) k (* c.k == k *)
                    then rgret false
                    else _
                           (* Unreasonable pseudocode from PODC paper:
@@ -424,6 +431,13 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                                  }
                              }
                              This still touches two disjoint locations in the test, allocates a multi-word object, and writes into p.n atomically....
+                             Could conceivably switch to 
+                                 DCAS( r , f # f0 ↦ f' , g # g0 ↦ g' )
+                             which could atomically test the mark bit with the tail set, e.g.
+                                 DCAS( p , mark # false ↦ false , nxt # c ↦ (convert… t) )
+                             It's not clear to me why (for insertion) c must also be unmarked
+                             in the case of separating logical and physical deletion.  For their
+                             approach to deletion it makes sense, but a marked c seems fine for insertion.
                              *)
                               
                  end
