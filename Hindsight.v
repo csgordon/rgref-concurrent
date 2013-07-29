@@ -36,7 +36,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
      - IMPL - φac : list is acyclic (seems to follow from φrT and φTn...)
      - IMPL - φs : The list is sorted (seems to follow from φ<)
      -- Slight modification.  The PODC paper gives the following:
-        - φUB : A node is marked iff it's a backbone node
+        - φUB : A node is unmarked iff it's a backbone node
      -- But that assumes marking and physical removal are atomic.  They won't be.  So the TR version
      -- Noam provided substitutes a weaker invariant:
      - .... - φub : A node is unmarked only if it is a backbone node
@@ -114,7 +114,13 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
 
   Inductive head_props : hpred E :=
     (* φ-∞ : Key of the head is -∞ *)
-    head_props_ctor : forall h tl, head_props (mkE -∞ false (Some tl)) h.
+    (* Remarkably, the Hindsight invariants allow the head node to be marked (!).
+       This works out okay for a couple reasons:
+       - The Hindsight Lemma itself is concerned only with transitive reachability through time,
+         not data/marking; in fact, the hindsight lemma wouldn't care about unmarking
+       - The only physical removal location, in the PODC paper and TR is the remove method; there's no helping with physical removal like in Harris's PODC ('01?) paper
+    *)
+    head_props_ctor : forall h m tl, head_props (mkE -∞ m (Some tl)) h.
   Inductive tail_props : hpred E :=
     (* φTn : The tail node has no successor
        φ∞ : Key of the tail is ∞ *)
@@ -177,18 +183,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     red; intros.
     Require Import Coq.Program.Equality.
     dependent induction H0; inversion H; subst; repeat injectE; subst; eauto; try constructor.
-    inversion H4; subst.
-    (* IMPORTANT: This is the mark case of deltaE, which permits marking the head.
-       (Marking the tail is prohibited because we only mark nodes with (Some _) tails.)
-       We shouldn't be allowed to mark the head for removal. Doing so also breaks linearizability,
-       which is probably why the Hindsight paper doesn't enforce this constraint.
-       TODO: Is there some way to spin this as an important clarification or minor bug fix to
-             the Hindsight paper?  How do I present this.  Is the stability just irrelevant
-             for the Hindsight paper, since they observe that all actions fall within those
-             steps, and preserve these properties (since they don't mark the head)?
-       TODO: Make sure this isn't just me doing a bad job translating the Hindsight paper's invariants.
-     *)
-  Admitted.
+  Qed.
   Hint Resolve stable_head.
     
   Inductive e_reaching : forall (T:Set) P R G, ref{T|P}[R,G] -> E -> Prop :=
@@ -308,6 +303,13 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     exists ∞. intuition; eauto. apply ninf_lt_inf. compute. rewrite E_rect_red. reflexivity.
     constructor.
   Qed.
+  
+  Definition opt_coerce {A:Set} (o:option A) (pf : o <> None) : A :=
+    match o as o0 return (o=o0 -> A) with
+    | Some a => fun _ => a
+    | None => fun r => False_rec _ (pf r)
+    end eq_refl.
+  Print opt_coerce.
     
   Check @convert_P.
   Program Definition locate {Γ} (l:hindsight_list) (k:⊠) : rgref Γ (eptr * eptr) Γ :=
@@ -321,7 +323,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                                             (fun rec x =>
                                                match x with
                                                | (p, c) => if (valOfE (!c) ≪≪ k)
-                                                           then rec (c, _) (* TODO: convert option eptr to an eptr, provable since k ≪≪ ∞ *)
+                                                           then rec (c, opt_coerce _ _) (* k ≪≪ ∞ so not None *)
                                                            else rgret (p, c)
                                                end
                                             )
@@ -331,6 +333,8 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   .
   Next Obligation. Admitted. (* folding.. *)
   Next Obligation. (* Now with tie b/t ! and some heap, can invalidate the None using head_props *) Admitted.
+  Next Obligation. (* c ~> n once I define all the field stuff *) Admitted.
+  Next Obligation. Admitted.
   Next Obligation. eapply pred_and_proj1; eauto. Qed.
 
 (*
@@ -384,7 +388,10 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                   }
                *)
                (* Aside from the complexity of managing the changed flag in the linearizability proof,
-                  this code (the more granular version!) still touches a lot of non-contiguous memory atomically! *)
+                  this code (the more granular version!) still touches a lot of non-contiguous memory atomically! 
+                  Harris & Michael's versions of this lock-free set stash mark bits into pointers, meaning
+                  the mark data can actually be managed with a single CAS.
+               *)
                  _
               ) _.
   Next Obligation. Admitted.
