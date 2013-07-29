@@ -74,6 +74,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     end.
   Definition valOfE (e:E) : ⊠ := E_rect (fun _ => ⊠) (fun n m tl => n) e.
   Definition markedOfE (e:E) : bool := E_rect (fun _ => bool) (fun n m tl => m) e.
+  Definition nextOfE (e:E) := E_rect (fun _ => _) (fun n m tl => tl) e.
   Inductive deltaE' : hrel E :=
   (* Implicitly:
      - δk : The key of a node does not change
@@ -323,7 +324,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                                             (fun rec x =>
                                                match x with
                                                | (p, c) => if (valOfE (!c) ≪≪ k)
-                                                           then rec (c, opt_coerce _ _) (* k ≪≪ ∞ so not None *)
+                                                           then rec (c, opt_coerce (nextOfE (!c)) _) (* k ≪≪ ∞ so not None *)
                                                            else rgret (p, c)
                                                end
                                             )
@@ -333,8 +334,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   .
   Next Obligation. Admitted. (* folding.. *)
   Next Obligation. (* Now with tie b/t ! and some heap, can invalidate the None using head_props *) Admitted.
-  Next Obligation. (* c ~> n once I define all the field stuff *) Admitted.
-  Next Obligation. Admitted.
+  Next Obligation. (* Need refining observation that c ≪≪ k, and since k ≪≪ ∞, next is non-null *) Admitted.
   Next Obligation. eapply pred_and_proj1; eauto. Qed.
 
 (*
