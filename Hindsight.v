@@ -40,11 +40,23 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
      -- But that assumes marking and physical removal are atomic.  They won't be.  So the TR version
      -- Noam provided substitutes a weaker invariant:
      - .... - φub : A node is unmarked only if it is a backbone node
+        +------------------------------------------------------------------------------------------------+
+        | φub (and φUB) actually hold in the paper only because during insertion, the allocation         |
+        | of the new unmarked node happens inside an atomic block guarded by the check that the          |
+        | insertion will succeed.  So for φub to actually be invariant, you must be able to atomically:  |
+        |    + allocate and initialize an object                                                         |
+        |    + store a pointer to that object into an existing next field                                |
+        | Separating the allocation and linking creates a span of time where neither of φUB or φub holds |
+        | The appendix of the TR actually discusses that φrT may not hold for separate allocation, but   |
+        | the proposed solution (thread-local vs. shared heaps, invariants apply to shared heap only)    |
+        | would naturally handle the φub/UB issue as well.                                               |
+        +------------------------------------------------------------------------------------------------+
      - DONE - δH : value of head ptr never changes
      - DONE - δT : value of tail ptr never changes
      - DONE - δk : key of a node never changes
      - DONE - δm : marked nodes never become unmarked
-     - .... - δe : exterior node does not become a backbone node (seems to follow from φUB and δm... not from φub...)
+     - CONS - δe : exterior node does not become a backbone node (seems to follow from φUB/φub and δm, since
+                   exterior->interior would require unmarking)
      - DONE - δen : successor of an exterior node does not change (succ of marked node doesn't change)
      - DONE - δbn : if a backbone successor changes, the node must remain a backbone (unmarked)
      Remember that a backbone node is one reachable from the head, and only unmarked nodes are backbone nodes.
@@ -52,6 +64,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
 
      DONE = done
      IMPL = implicit in data representation (e.g. option vs. not option for nullable vs. non-null )
+     CONS = consequence of other invariants and/or their representation
 
   *)
 (** We'll axiomatize an inductive-inductive characterization, including elimination and the computational behavior
@@ -330,8 +343,8 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                                       RGFix _ _
                                             (fun rec x =>
                                                match x with
-                                               | (p, c) => if (valOfE (!c) ≪≪ k)
-                                                           then rec (c, opt_coerce (nextOfE (!c)) _) (* k ≪≪ ∞ so not None *)
+                                               | (p, c) => if ((c ~> data) ≪≪ k)
+                                                           then rec (c, opt_coerce (c ~> nxt) _) (* k ≪≪ ∞ so not None *)
                                                            else rgret (p, c)
                                                end
                                             )
@@ -341,7 +354,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   .
   Next Obligation. Admitted. (* folding.. *)
   Next Obligation. (* Now with tie b/t ! and some heap, can invalidate the None using head_props *) Admitted.
-  Next Obligation. (* Need refining observation that c ≪≪ k, and since k ≪≪ ∞, next is non-null *) Admitted.
+  Next Obligation. (* Need refining observation that c~>data ≪≪ k, and since k ≪≪ ∞, next is non-null *) Admitted.
   Next Obligation. eapply pred_and_proj1; eauto. Qed.
 
 (*
