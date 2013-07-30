@@ -80,7 +80,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Instance hs_node_fields : FieldTyping E F.
   Instance e_val : FieldType E F data ⊠ := { getF := fun e => valOfE e; setF := fun e x => mkE x (markedOfE e) (nextOfE e) }.
   Instance e_mark : FieldType E F mark bool := { getF := fun e => markedOfE e; setF := fun e x => mkE (valOfE e) x (nextOfE e) }.
-  Instance e_nxt : FieldType E F nxt _ := { getF := fun e => nextOfE e; setF := fun e x => mkE (valOfE e) (markedOfE e) x }.
+  Instance e_nxt : FieldType E F nxt (option (ref{E|invE}[deltaE,deltaE])) := { getF := fun e => nextOfE e; setF := fun e x => mkE (valOfE e) (markedOfE e) x }.
 
   Inductive deltaE' : hrel E :=
   (* Implicitly:
@@ -418,7 +418,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                  | (p, c) =>
                    if inf_eqb (c ~> data) k (* c.k == k *)
                    then rgret false
-                   else _
+                   else (
                           (* Unreasonable pseudocode from PODC paper:
                              atomic {
                                  if (p.n == c && !p.m && !c.m) {
@@ -439,10 +439,23 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                              in the case of separating logical and physical deletion.  For their
                              approach to deletion it makes sense, but a marked c seems fine for insertion.
                              *)
-                              
+                       _ <- (LinAlloc[VZero] (mkE k false (Some c))) ;
+                       success <- DCASs(p, mark, false, false, nxt, Some c, (fun c' => Some c'), VZero, TFirst VZero _ _);
+                       if success
+                       then rgret true
+                       else rec tt
+                        )
                  end
-              ) _.
-  Next Obligation. Admitted.
+              ) tt.
+  Next Obligation. compute. intros; subst. reflexivity. Qed.
+  Next Obligation.
+    fixdefs. red. intros. destruct H0. subst. constructor. (* TODO: plumb k ≪ ∞ *) admit. Qed.
+  Next Obligation. firstorder. Qed.
+  Next Obligation. firstorder. Qed.
+  Next Obligation. (* deltaE proof for the write *)
+    destruct H4.
+  Admitted.    
+
 (*
     mb : Maybe eptr -> Maybe eptr -> Bool
     mb (just x) (just x') = x ≈ x'
