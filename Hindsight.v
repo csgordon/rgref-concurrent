@@ -453,7 +453,13 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   Next Obligation. firstorder. Qed.
   Next Obligation. firstorder. Qed.
   Next Obligation. (* deltaE proof for the write *)
-    destruct H4.
+    assert (deltaE' ⊆ deltaE). fixdefs. firstorder. apply H0. clear H0.
+    destruct H4. rewrite H3.
+    assert (h[e] = mkE (valOfE (h[e])) (markedOfE (h[e])) (nextOfE (h[e]))). admit. (* TODO: closed ctor axiom *)
+    rewrite H2 in H4. rewrite H3 in H4. rewrite H4.
+    unfold valOfE. unfold markedOfE. unfold nextOfE. repeat rewrite E_rect_red. 
+    eapply deltaE_insert; rewrite H4; rewrite E_rect_red.
+    (* Now two pretty reasonable goals: preserving properties of h[s] in h', and ≪ check. *)
   Admitted.    
 
 (*
