@@ -21,6 +21,7 @@ Instance cell_parent {n:nat} : FieldType (cell n) F parent (Fin.t n) :=
   { getF := fun x => match x with mkCell r p => p end;
     setF := fun x v => match x with mkCell r p => mkCell _ r v end }.
 
+Section FinResults.
 
 Definition fin_beq {n:nat} (x y:Fin.t n) : bool :=
   Fin.rect2 (fun _ _ _ => bool)
@@ -45,10 +46,30 @@ Definition fin_lt {n:nat} (x y:Fin.t n) : bool :=
             (* F1 FS *) (fun _ _ => true)
             (* FS F1 *) (fun _ _ => false)
             (* FS FS *) (fun _ _ _ rec => rec) x y.
+Program Lemma proj1_to_nat_comm : forall n (x:t n), proj1_sig (to_nat (FS x)) = S (proj1_sig (to_nat x)).
+Proof.
+  intros.
+ induction x. compute. reflexivity. rewrite IHx. 
+ simpl. induction (to_nat x). simpl. reflexivity.
+Qed.
 Program Lemma fin_lt_nat : forall n (x y:Fin.t n), @fin_lt n x y = true <-> (to_nat x) < to_nat y.
 Proof.
-  (* Stuck in Fin.t indexing hell *)
-Admitted.
+  intros. split.
+  Check Fin.rect2.
+  eapply Fin.rect2 with (a := x) (b := y); intros.
+      inversion H. 
+      induction f. simpl. auto with arith. rewrite proj1_to_nat_comm. compute. auto with arith.
+      inversion H.
+      induction f. repeat rewrite proj1_to_nat_comm. auto with arith.
+      rewrite proj1_to_nat_comm. rewrite (@proj1_to_nat_comm _ g).
+      auto with arith.
+  (* <- *)
+  eapply Fin.rect2 with (a := x) (b := y); intros; try solve[inversion H].
+      compute; auto.
+      simpl. apply H. repeat rewrite proj1_to_nat_comm in H0. inversion H0. constructor. subst. auto with arith.
+Qed.
+
+End FinResults.
   
 Inductive root (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Fin.t n -> Prop :=
   | self_root : (getF (h[x<|i|>])) = i ->
