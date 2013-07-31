@@ -143,16 +143,6 @@ Qed.
   
 Hint Resolve refl_δ.
 
-Axiom indep_array_conv_alloc :
-    forall {Γ} (n:nat) {T0:forall (i:nat) (pf:i<n), Set} {T:Set} {P:hpred (Array n T)} {R G}, 
-    (forall (i:nat) (pf:i<n), rgref Γ (T0 i pf) Γ) ->
-    forall
-    (cnv : forall i (pf:i<n), T0 i pf -> T),
-    (forall A h,
-        (forall i (pf:i<n), exists (f0 : T0 i pf), array_read A (of_nat_lt pf) = cnv i pf f0) ->
-        P A h) ->
-    rgref Γ (ref{(Array n T)|P}[R,G]) Γ.
-
 Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf n|φ n}[δ n, δ n]) Γ :=
   (*arr <- indep_array n (fun i pf => Alloc (mkCell n 0 (of_nat_lt pf)));
   Alloc arr.*)

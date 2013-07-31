@@ -130,6 +130,16 @@ Global Instance array_field_index {n:nat}{T:Set}{f:fin n} : FieldType (Array n T
 }.
 
 Axiom indep_array : forall {Γ} (n:nat) {T:Set}, (forall (i:nat), i<n -> rgref Γ T Γ) -> rgref Γ (Array n T) Γ.
+Axiom indep_array_conv_alloc :
+    forall {Γ} (n:nat) {T0:forall (i:nat) (pf:i<n), Set} {T:Set} {P:hpred (Array n T)} {R G}, 
+    (forall (i:nat) (pf:i<n), rgref Γ (T0 i pf) Γ) ->
+    forall
+    (cnv : forall i (pf:i<n), T0 i pf -> T),
+    (forall A h,
+        (forall i (pf:i<n), exists (f0 : T0 i pf), array_read A (of_nat_lt pf) = cnv i pf f0) ->
+        P A h) ->
+    rgref Γ (ref{(Array n T)|P}[R,G]) Γ.
+
 
 End Arrays.
 
