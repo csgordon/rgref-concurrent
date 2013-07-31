@@ -143,16 +143,56 @@ Qed.
   
 Hint Resolve refl_δ.
 
+Axiom indep_array_conv_alloc :
+    forall {Γ} (n:nat) {T0:forall (i:nat) (pf:i<n), Set} {T:Set} {P:hpred (Array n T)} {R G}, 
+    (forall (i:nat) (pf:i<n), rgref Γ (T0 i pf) Γ) ->
+    forall
+    (cnv : forall i (pf:i<n), T0 i pf -> T),
+    (forall A h,
+        (forall i (pf:i<n), exists (f0 : T0 i pf), array_read A (of_nat_lt pf) = cnv i pf f0) ->
+        P A h) ->
+    rgref Γ (ref{(Array n T)|P}[R,G]) Γ.
+
 Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf n|φ n}[δ n, δ n]) Γ :=
-  arr <- indep_array n (fun i pf => Alloc (mkCell n 0 (of_nat_lt pf)));
-  Alloc arr.
+  (*arr <- indep_array n (fun i pf => Alloc (mkCell n 0 (of_nat_lt pf)));
+  Alloc arr.*)
+  indep_array_conv_alloc n (fun i pf => Alloc (mkCell n 0 (of_nat_lt pf))) _ _.
+Next Obligation. red; intros. exact (H = mkCell n 0 (of_nat_lt pf)). Defined.
+Next Obligation. exact local_imm. Defined.
+Next Obligation. exact local_imm. Defined.
+Next Obligation. unfold alloc_uf_obligation_1. unfold alloc_uf_obligation_2.
+  red; intros. inversion H0; subst. rewrite <- H1. reflexivity. Qed.
+Next Obligation. intuition. Qed.
+Next Obligation. unfold alloc_uf_obligation_1. red. intros. subst; auto. Qed.
+Next Obligation. unfold alloc_uf_obligation_2. red. intros. inversion H1. subst. constructor. Qed.
+Next Obligation. unfold alloc_uf_obligation_3. red; intros. inversion H1; subst. constructor. Qed.
+Next Obligation. 
+  unfold alloc_uf_obligation_1 in *.
+  unfold alloc_uf_obligation_2 in *.
+  unfold alloc_uf_obligation_3 in *.
+  eapply convert; eauto.
+Defined.
 Next Obligation.
   (* Prove φ of the initial array.  Need the array allocation to expose some summary of the
      initialization process, something like making the result of the allocation function
      depend on the index, together with a conversion that weakens that result (like loosening
      a refinement that the parent pointer is the cell number initially) and some way to
      stitch those together for an array-wide refinement... *)
-Admitted.
+  unfold alloc_uf_obligation_1 in *.
+  unfold alloc_uf_obligation_2 in *.
+  unfold alloc_uf_obligation_3 in *.
+  unfold alloc_uf_obligation_10 in *.
+  constructor. intros.
+  constructor.
+  assert (exists i0, exists (pf:i0 < n), i = of_nat_lt pf).
+      exists (proj1_sig (to_nat i)). exists (proj2_sig (to_nat i)).
+      induction i. compute; auto. (* obvious but painful *) admit.
+  destruct H0 as [i0 [pf H0]].
+  specialize (H i0 pf). destruct H as [f0 Hconv].
+  rewrite H0. assert (Htmp := heap_lookup2 h f0). simpl in Htmp.
+  rewrite Hconv.
+  rewrite <- (convert_equiv f0). rewrite Htmp. simpl. auto.
+Qed.
 
 (* This will show up with any array read. *)
 Lemma uf_folding : forall n, rgfold (δ n) (δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
