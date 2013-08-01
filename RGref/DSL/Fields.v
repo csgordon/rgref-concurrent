@@ -1,5 +1,5 @@
 Require Import RGref.DSL.DSL.
-Require Import Coq.Vectors.Fin.
+Require Export Coq.Vectors.Fin.
 Require Import Coq.Arith.Arith.
 
 (* Field Typing is a tagging mechanism, that fields of T are indexed by F *)
@@ -19,7 +19,9 @@ Axiom field_read : forall {T B F Res:Set}{P R G}`{rel_fold T}
                           (r:ref{T|P}[R,G]) (f:F)
                           `{FieldType B F f Res},
                           Res.
-Check @getF. Check @fold. Check @setF.
+
+Notation "x ~> f" := (@field_read _ _ _ _ _ _ _ _ _ _ x f _ _) (at level 50).
+
 Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:rel_fold T}
                            (r:ref{T|P}[R,G]) (f:F) (e : Res)
                            `{FieldTyping T F}
@@ -31,6 +33,8 @@ Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:rel_fold T}
                                    @getF (@rgfold T folder R G) F ft' f Res fte' (@fold T folder R G v)) ->
                                G v (@setF T F _ f Res ft v e) h (heap_write r (@setF T F _ f Res ft v e) h)},
                            rgref Γ unit Γ.
+
+Notation "{[ x ~~> f ]}:= e" := (@field_write _ _ _ _ _ _ _ _ x f e _ _ _) (at level 50).
 
 Section FieldDemo.
 
@@ -69,3 +73,75 @@ Section FieldDemo.
     compute. fold plus. constructor. eauto with arith.
   Qed.
 End FieldDemo.
+
+
+
+
+Section Arrays.
+(** A functional model of arrays *)
+Definition fin := t.
+Axiom Array : nat -> Set -> Set.
+Axiom new_array : forall (n:nat) (T:Set), T -> Array n T.
+Axiom array_read : forall {n:nat}{T:Set}, Array n T -> fin n -> T.
+Axiom array_write : forall {n:nat}{T:Set}, Array n T -> fin n -> T -> Array n T.
+
+Axiom array_map : forall {n:nat}{T:Set}{B:Set}, (T->B) -> Array n T -> Array n B.
+Axiom array_id_update : forall {n T} (a:Array n T) f, array_write a f (array_read a f) = a.
+Axiom read_fresh_array : forall n T e f, array_read (new_array n T e) f = e.
+Axiom read_updated_cell : forall n T (a:Array n T) f e, array_read (array_write a f e) f = e.
+Axiom read_past_updated_cell: 
+    forall n T (a:Array n T) f1 f2 e,
+      f2 <> f2 ->
+      array_read (array_write a f1 e) f2 = array_read a f2.
+Axiom read_map_array : forall n (T B:Set) x (f:T->B) (a:Array n T),
+                         array_read (array_map f a) x = f (array_read a x).
+
+Global Instance array_reachable {n:nat}{T:Set}`{ImmediateReachability T} : ImmediateReachability (Array n T) :=
+{
+  imm_reachable_from_in := fun T P R G r arr =>
+                             exists f, imm_reachable_from_in r (array_read arr f)
+}.
+
+Global Instance array_fold {n:nat}{T:Set}`{rel_fold T} : rel_fold (Array n T) :=
+{
+  rgfold := fun R G => Array n (rgfold havoc
+                                       (fun x x' h h' =>
+                                           forall a f,
+                                               array_read a f = x ->
+                                               G a (array_write a f x') h h')
+                                       );
+  fold := fun R G x => array_map fold x
+                                       
+}.
+
+Global Instance array_contains {n:nat}{T:Set}`{Containment T} : Containment (Array n T) :=
+{
+  contains := fun R => 
+    contains (fun (x x':T) h h' => forall a f, array_read a f = x ->
+                                               R a (array_write a f x') h h')
+}.
+
+(** Arrays a essentially [fin n]-indexed object, so use those as fields.
+    This lets us use fields with things like fCAS *)
+Global Instance array_fields {n:nat}{T:Set} : FieldTyping (Array n T) (fin n).
+Global Instance array_field_index {n:nat}{T:Set}{f:fin n} : FieldType (Array n T) (fin n) f T := {
+  getF := fun v => array_read v f;
+  setF := fun v fv => array_write v f fv
+}.
+
+Axiom indep_array : forall {Γ} (n:nat) {T:Set}, (forall (i:nat), i<n -> rgref Γ T Γ) -> rgref Γ (Array n T) Γ.
+Axiom indep_array_conv_alloc :
+    forall {Γ} (n:nat) {T0:forall (i:nat) (pf:i<n), Set} {T:Set} {P:hpred (Array n T)} {R G}, 
+    (forall (i:nat) (pf:i<n), rgref Γ (T0 i pf) Γ) ->
+    forall
+    (cnv : forall i (pf:i<n), T0 i pf -> T),
+    (forall A h,
+        (forall i (pf:i<n), exists (f0 : T0 i pf), array_read A (of_nat_lt pf) = cnv i pf f0) ->
+        P A h) ->
+    rgref Γ (ref{(Array n T)|P}[R,G]) Γ.
+
+
+End Arrays.
+
+Notation "a <| x |>" := (array_read a x) (at level 50).
+Notation "a <| x ↦ e |>" := (array_write a x e) (at level 51).

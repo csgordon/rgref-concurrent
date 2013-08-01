@@ -47,6 +47,7 @@ Module Type RCC.
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
+                (G ⊆ R) ->
                 rgref Γ (rccref T P R G l) Γ.
   (** Both of these should be introducing and removing witnesses in the linear context.  Since that's
       currently not implemented, for this sketch we're going closer to the desired source language. *)
@@ -89,8 +90,9 @@ Module RCCImpl : RCC.
                 `(precise_pred P)    (* P precise *)
                 `(precise_rel R)     (* R precise *)
                 `(precise_rel G)     (* G precise *)
+                `(G ⊆ R)
                 : rgref Γ (rccref T P R G l) Γ :=
-      alloc _ _ _ e _ _ _ _ _.
+      alloc _ _ _ e _ _ _ _ _ _.
   Parameter acquire : forall {Γ}(w:var)(l:lock), rgref Γ unit (w:ref{lockwitness l | locked}[empty,locked-->unlocked],Γ).
   Parameter release : forall {Γ}{l:lock}(w:var){pf:(tymember w (ref{lockwitness l | locked}[empty,locked-->unlocked]) Γ)}, rgref Γ unit (tyrem pf).
 End RCCImpl.
@@ -136,7 +138,7 @@ Section RaceFreeMonotonicCounter.
   Local Obligation Tactic := intros; eauto with arith; compute; auto with arith; repeat constructor.
   Program Definition mkRFCounter {Γ} (l:lock) : rgref Γ (rf_monotonic_counter l) Γ :=
     (*RCCAlloc l 0.*)
-    rcc_alloc _ _ _ l 0 _ _ _ _ _.
+    rcc_alloc _ _ _ l 0 _ _ _ _ _ _.
   (** Again, remember that the lock witness should really be in a monadic context *)
   Parameter w : var.
   Program Example test_counter {Γ} (l:lock) : rgref Γ unit Γ :=

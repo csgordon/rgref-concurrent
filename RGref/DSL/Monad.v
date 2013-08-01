@@ -32,6 +32,7 @@ Program Definition rgref_bind {Γ Γ' Γ'':tyenv}{t t':Set} (a:rgref Γ t Γ') (
 (* TODO: To actually define this properly, bind needs to do framing and ret should use the empty env. *)
 Axiom rgret : forall {Γ:tyenv}{A:Set}(a:A), rgref Γ A Γ .
 (*  := mkRGR Γ A Γ e a e (fun h=>h).*)
+(* (mkRGR ε A ε ∅ a ∅ (fun h => h)). *)
 
 Axiom dropvar : forall {Γ} (v:var) (t:Set) (tm:tymember v t Γ), rgref Γ unit (tyrem tm).
 
@@ -114,8 +115,9 @@ Axiom alloc : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{F
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
+                G ⊆ R ->
                 rgref Γ (ref{T|P}[R,G]) Γ.
-Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _) (at level 70).
+Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _ _) (at level 70).
 (** Sometimes it is useful to refine P to give equality with the allocated value, which
     propagates assumptions and equalities across "statements." *)
 Axiom alloc' : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T) (meta_e:T),
@@ -124,8 +126,9 @@ Axiom alloc' : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
+                G ⊆ R ->
                  rgref Γ (ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G]) Γ.
-Notation "Alloc! e" := (alloc' _ _ _ e ({{{e}}}) _ _ _ _ _) (at level 70).
+Notation "Alloc! e" := (alloc' _ _ _ e ({{{e}}}) _ _ _ _ _ _) (at level 70).
                                  
 
   
@@ -145,7 +148,14 @@ Notation "VarAlloc! v e" := (varalloc' _ _ _ v e ({{{e}}}) _ _ _ _ _) (at level 
 (** ** Fixpoints *)
 (** Possibly non-terminating fixpoint combinators. *)
 (* TODO: This is only a first cut, and doesn't allow polymorphic recursion. *)
-Axiom RGFix : forall { Γ Γ' }(t t':Set), ((t -> rgref Γ t' Γ') -> (t -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
-Axiom RGFix2 : forall { Γ Γ' }(t t2 t':Set), ((t -> t2 -> rgref Γ t' Γ') -> (t -> t2 -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
-Axiom RGFix3 : forall { Γ Γ' }(t t2 t3 t':Set), ((t -> t2 -> t3 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
-Axiom RGFix4 : forall { Γ Γ' }(t t2 t3 t4 t':Set), ((t -> t2 -> t3 -> t4 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> t4 -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
+Axiom RGFix : forall { Γ Γ' }(t t':Set), 
+    ((t -> rgref Γ t' Γ') -> (t -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
+Axiom RGFix2 : forall { Γ Γ' }(t t2 t':Set), 
+    ((t -> t2 -> rgref Γ t' Γ') -> (t -> t2 -> rgref Γ t' Γ')) -> 
+    t -> t2 -> rgref Γ t' Γ'.
+Axiom RGFix3 : forall { Γ Γ' }(t t2 t3 t':Set), 
+    ((t -> t2 -> t3 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> rgref Γ t' Γ')) -> 
+    t -> t2 -> t3 -> rgref Γ t' Γ'.
+Axiom RGFix4 : forall { Γ Γ' }(t t2 t3 t4 t':Set), 
+    ((t -> t2 -> t3 -> t4 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> t4 -> rgref Γ t' Γ')) ->
+    t -> t2 -> t3 -> t4 -> rgref Γ t' Γ'.
