@@ -16,25 +16,26 @@ Inductive splits : Set -> Set -> Set -> Prop :=
   | funsp : forall (A B:Set),
                splits (forall x:A, B) (forall x:A, B) (forall x:A, B)
 . 
-Inductive rgref (Γ:tyenv) (T:Set) (Γ':tyenv) : Type :=
-  | mkRGR :  envlist Γ -> T -> envlist Γ' -> (heap -> heap) -> rgref Γ T Γ'.
+Inductive rgref (Δ:tyenv) (T:Set) (Δ':tyenv) : Type :=
+  (*| mkRGR :  envlist Δ -> T -> envlist Δ' -> (heap -> heap) -> rgref Δ T Δ'.*)
+  | mkRGR : (envlist Δ * heap -> T * envlist Δ' * heap) -> rgref Δ T Δ'.
 
 (* TODO: Really bind should be doing some kind of framing on environments, a subenv type thing. *)
-Program Definition rgref_bind {Γ Γ' Γ'':tyenv}{t t':Set} (a:rgref Γ t Γ') (b:t->rgref Γ' t' Γ'') : rgref Γ t' Γ'' :=
+Definition rgref_bind {Δ Δ' Δ'':tyenv}{t t':Set} (a:rgref Δ t Δ') (b:t->rgref Δ' t' Δ'') : rgref Δ t' Δ'' :=
   match a with
-  | mkRGR _ va _ ha =>
-    match b va with
-    | mkRGR _ vb _ hb =>
-      mkRGR _ _ _ _ vb _ (fun h => hb (ha h))
-    end
+    | mkRGR transA => mkRGR _ _ _
+                            (fun eh => match transA eh with
+                                         | (x,e',h') => match b x with
+                                                          | mkRGR transB => transB (e',h')
+                                                        end
+                                       end)
   end.
 
 (* TODO: To actually define this properly, bind needs to do framing and ret should use the empty env. *)
-Axiom rgret : forall {Γ:tyenv}{A:Set}(a:A), rgref Γ A Γ .
-(*  := mkRGR Γ A Γ e a e (fun h=>h).*)
-(* (mkRGR ε A ε ∅ a ∅ (fun h => h)). *)
+Definition rgret {Δ:tyenv}{A:Set}(a:A) : rgref Δ A Δ :=
+  mkRGR Δ A Δ (fun eh => match eh with (e,h) => (a,e,h) end).
 
-Axiom dropvar : forall {Γ} (v:var) (t:Set) (tm:tymember v t Γ), rgref Γ unit (tyrem tm).
+Axiom dropvar : forall {Δ} (v:var) (t:Set) (tm:tymember v t Δ), rgref Δ unit (tyrem tm).
 
 (** The core problem with folding here is that we want the user (and automated provers!) to see the same dereference on either side of
     G's state.  But G applies to elements of A, not [R,G]>>A.  We could introduce an internal "cheat_deref" that skipped
@@ -58,20 +59,20 @@ Axiom dropvar : forall {Γ} (v:var) (t:Set) (tm:tymember v t Γ), rgref Γ unit 
     and obligation statements.
 *)
 (** TODO: Fix store to work properly with the linear environment. *)
-(*Axiom store : forall {Γ:dyn_env}{A:Set}{P R G}(x:var)(e:A)
-                 {varty:exists ptr, lookup x Γ = Some (existT (fun x:Set=>x) (ref{A|P}[R,G]) ptr)}
-                 {guar:forall h l, lookup x Γ = Some (existT (fun x:Set=>x) (ref{A|P}[R,G]) l) ->
+(*Axiom store : forall {Δ:dyn_env}{A:Set}{P R G}(x:var)(e:A)
+                 {varty:exists ptr, lookup x Δ = Some (existT (fun x:Set=>x) (ref{A|P}[R,G]) ptr)}
+                 {guar:forall h l, lookup x Δ = Some (existT (fun x:Set=>x) (ref{A|P}[R,G]) l) ->
                    G (!l) e h (heap_write l e h)}
                  {pres:(forall h (l:ref{A|P}[R,G]), P (!l) h -> P e (heap_write l e h))}
-                 , rgref Γ unit Γ.*)
-Program Axiom write' : forall {Γ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:A)
+                 , rgref Δ unit Δ.*)
+Program Axiom write' : forall {Δ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:A)
                       (meta_x_deref:A) (meta_e_fold:A) 
                       (** These meta args are notationally expanded x and e using the identity relation folding *)
                  (*{guar:forall h, G (!x) e h (heap_write x e h)} *)
                  {guar:forall h, (forall A (fa:rel_fold A), fa = meta_fold) -> G (meta_x_deref) e h (heap_write x e h)}
                  (** temporarily not using meta_e_fold... the cases where I needed the "nop" behavior are once where the types are actually equal *)
                  {pres:(forall h, P meta_x_deref h -> P meta_e_fold (heap_write x meta_e_fold h))}
-                 , rgref Γ unit Γ.
+                 , rgref Δ unit Δ.
 Notation "[ x ]:= e" := (@write' _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at level 70).
 (** TODO: heap writes that update the predicate.  Because of the monadic style, we'll actually
    need a new axiom and syntax support for this, to rebind the variable at the strengthened type *)
@@ -79,7 +80,10 @@ Notation "[ x ]:= e" := (@write' _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at
 (** Interactions between pure terms and monadic terms *)
 (** valueOf should be treated as roughly a more serious version of unsafePerformIO;
     it's a coreturn like the latter, but should actually never be written in user programs! *)
-Program Axiom valueOf : forall {Γ Γ'}{A:Set}, envlist Γ -> heap -> rgref Γ A Γ' -> A.
+Definition valueOf {Δ Δ'}{A:Set} (e:envlist Δ) (h:heap) (m:rgref Δ A Δ') : A :=
+  match m with
+    | mkRGR f => match f (e,h) with (x,_,_) => x end
+  end.
 (** pureApp is essentially based on valueOf... Technically this is weaker than what's in the paper,
     since dependently-typed pure functions are allowed if the instantiation of the range type is
     closed, but right now I don't need the expressiveness and can't figure out how to properly treat the
@@ -87,60 +91,67 @@ Program Axiom valueOf : forall {Γ Γ'}{A:Set}, envlist Γ -> heap -> rgref Γ A
     
     I supposed technically this makes rgref an indexed functor (in the Haskell sense), and with a
     small tweak, an applicative functor if we need it. *)
-Program Axiom pureApp : forall {Γ Γ'}{A:Set}`{splits A A A}{B:Set}, (A->B) -> rgref Γ A Γ' -> rgref Γ B Γ'.
+Definition pureApp {Δ Δ'}{A:Set}`{splits A A A}{B:Set} (f:A->B) (m:rgref Δ A Δ') : rgref Δ B Δ' :=
+  match m with
+    | mkRGR body => mkRGR _ _ _ (fun eh => match body eh with (a,e,h) => (f a, e, h) end)
+  end.
 
 (** This is just strong enough to get the race-free counter example to go through... Need to strengthen this at some point. *)
-Axiom weak_pureApp_morphism :
-  forall Γ Γ' τ env h (e:rgref Γ τ Γ') (sp:splits τ τ τ) (f:τ->τ) (P:τ->τ->Prop),
+Lemma weak_pureApp_morphism :
+  forall Δ Δ' τ env h (e:rgref Δ τ Δ') (sp:splits τ τ τ) (f:τ->τ) (P:τ->τ->Prop),
     (forall v:τ, P v (f v)) ->
-    P (valueOf Γ Γ' τ env h e) (valueOf Γ Γ' τ env h (pureApp Γ Γ' τ sp τ f e)).
+    P (valueOf env h e) (valueOf env h (@pureApp _ _ _ sp _ f e)).
+Proof.
+  intros. destruct e. unfold pureApp. unfold valueOf.
+  induction (p (env,h)). induction a. auto.
+Qed.
 
 (* Impure read expression (using a direct ref value) *)
-Program Axiom read_imp : forall {Γ}{A B:Set}`{rel_fold A}{P R G}`{hreflexive G}`{rgfold R G = B}(x:ref{A|P}[R,G]), rgref Γ B Γ.
+Program Axiom read_imp : forall {Δ}{A B:Set}`{rel_fold A}{P R G}`{hreflexive G}`{rgfold R G = B}(x:ref{A|P}[R,G]), rgref Δ B Δ.
 
 (* Writing with an impure source expression (and direct ref value) *)
-Program Axiom write_imp_exp : forall {Γ Γ'}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:rgref Γ A Γ')
-                              (meta_x_deref:rgref Γ A Γ') (meta_e_fold:rgref Γ A Γ')
-                              {guar:forall h env, G (valueOf _ _ _ env h meta_x_deref) (valueOf _ _ _ env h e) h (heap_write x (valueOf _ _ _ env h e) h)}
-                              {pres:(forall h env, P (valueOf _ _ _ env h meta_x_deref) h -> P (valueOf _ _ _ env h meta_e_fold) (heap_write x (valueOf _ _ _ env h meta_e_fold) h))}
-                              , rgref Γ unit Γ'.
+Program Axiom write_imp_exp : forall {Δ Δ'}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:rgref Δ A Δ')
+                              (meta_x_deref:rgref Δ A Δ') (meta_e_fold:rgref Δ A Δ')
+                              {guar:forall h env, G (valueOf env h meta_x_deref) (valueOf env h e) h (heap_write x (valueOf env h e) h)}
+                              {pres:(forall h env, P (valueOf env h meta_x_deref) h -> P (valueOf env h meta_e_fold) (heap_write x (valueOf env h meta_e_fold) h))}
+                              , rgref Δ unit Δ'.
 Notation "[[ x ]]:= e" := (@write_imp_exp _ _ _ _ _ _ _ _ x e ({{{read_imp x}}}) ({{{e}}}) _ _) (at level 70).
 
 Definition locally_const {A:Set} (R:hrel A) := forall a a' h h', R a a' h h' -> a=a'.
 
 
-Axiom alloc : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T), 
+Axiom alloc : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T), 
                 stable P R ->        (* predicate is stable *)
                 (forall h, P e h) -> (* predicate is true *)
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
                 G ⊆ R ->
-                rgref Γ (ref{T|P}[R,G]) Γ.
+                rgref Δ (ref{T|P}[R,G]) Δ.
 Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _ _) (at level 70).
 (** Sometimes it is useful to refine P to give equality with the allocated value, which
     propagates assumptions and equalities across "statements." *)
-Axiom alloc' : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T) (meta_e:T),
+Axiom alloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T) (meta_e:T),
                 stable P R ->        (* predicate is stable *)
                 (forall h, P e h) -> (* predicate is true *)
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
                 G ⊆ R ->
-                 rgref Γ (ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G]) Γ.
+                 rgref Δ (ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G]) Δ.
 Notation "Alloc! e" := (alloc' _ _ _ e ({{{e}}}) _ _ _ _ _ _) (at level 70).
                                  
 
   
 Notation "x <- M ; N" := (rgref_bind M (fun x => N)) (at level 49, right associativity).
 
-Axiom varalloc' : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (v:var) (e:T) (meta_e:T),
+Axiom varalloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (v:var) (e:T) (meta_e:T),
                 stable P R ->        (* predicate is stable *)
                 (forall h, P e h) -> (* predicate is true *)
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
-                 rgref Γ unit (v:ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G],Γ).
+                 rgref Δ unit (v:ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G],Δ).
 Notation "VarAlloc! v e" := (varalloc' _ _ _ v e ({{{e}}}) _ _ _ _ _) (at level 70).
 
 
@@ -148,14 +159,14 @@ Notation "VarAlloc! v e" := (varalloc' _ _ _ v e ({{{e}}}) _ _ _ _ _) (at level 
 (** ** Fixpoints *)
 (** Possibly non-terminating fixpoint combinators. *)
 (* TODO: This is only a first cut, and doesn't allow polymorphic recursion. *)
-Axiom RGFix : forall { Γ Γ' }(t t':Set), 
-    ((t -> rgref Γ t' Γ') -> (t -> rgref Γ t' Γ')) -> t -> rgref Γ t' Γ'.
-Axiom RGFix2 : forall { Γ Γ' }(t t2 t':Set), 
-    ((t -> t2 -> rgref Γ t' Γ') -> (t -> t2 -> rgref Γ t' Γ')) -> 
-    t -> t2 -> rgref Γ t' Γ'.
-Axiom RGFix3 : forall { Γ Γ' }(t t2 t3 t':Set), 
-    ((t -> t2 -> t3 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> rgref Γ t' Γ')) -> 
-    t -> t2 -> t3 -> rgref Γ t' Γ'.
-Axiom RGFix4 : forall { Γ Γ' }(t t2 t3 t4 t':Set), 
-    ((t -> t2 -> t3 -> t4 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> t4 -> rgref Γ t' Γ')) ->
-    t -> t2 -> t3 -> t4 -> rgref Γ t' Γ'.
+Axiom RGFix : forall { Δ Δ' }(t t':Set), 
+    ((t -> rgref Δ t' Δ') -> (t -> rgref Δ t' Δ')) -> t -> rgref Δ t' Δ'.
+Axiom RGFix2 : forall { Δ Δ' }(t t2 t':Set), 
+    ((t -> t2 -> rgref Δ t' Δ') -> (t -> t2 -> rgref Δ t' Δ')) -> 
+    t -> t2 -> rgref Δ t' Δ'.
+Axiom RGFix3 : forall { Δ Δ' }(t t2 t3 t':Set), 
+    ((t -> t2 -> t3 -> rgref Δ t' Δ') -> (t -> t2 -> t3 -> rgref Δ t' Δ')) -> 
+    t -> t2 -> t3 -> rgref Δ t' Δ'.
+Axiom RGFix4 : forall { Δ Δ' }(t t2 t3 t4 t':Set), 
+    ((t -> t2 -> t3 -> t4 -> rgref Δ t' Δ') -> (t -> t2 -> t3 -> t4 -> rgref Δ t' Δ')) ->
+    t -> t2 -> t3 -> t4 -> rgref Δ t' Δ'.
