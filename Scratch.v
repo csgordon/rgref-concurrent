@@ -114,8 +114,11 @@ CoInductive refines : relation trace :=
      of HITs for coinduction is.
    *)
   | refine_reassoc : forall Q R S, refines (Q~>R~>S) ((Q~>R)~>S)
+  | refine_reassoc' : forall Q R S, refines ((Q~>R)~>S) (Q~>R~>S)
   | refine_merge_passive_l : forall Q, refines (Q~>(local (clos_refl_trans heap eq))) Q
   | refine_merge_passive_r : forall Q, refines ((local (clos_refl_trans heap eq))~>Q) Q
+  | refine_merge_remote_trans : forall Q, transitive _ Q -> refines ((remote Q)~>(remote Q)) (remote Q)
+  | refine_merge_local_trans : forall Q, transitive _ Q -> refines ((local Q)~>(local Q)) (local Q)
   | refine_trans : forall Q R S, refines Q R -> refines R S -> refines Q S
   | refine_star : forall Q R, refines Q R -> refines (star Q) (star R)
   | refine_fold_star_a : forall a, refines (a ~> (star (a~>ε))) (star (a~>ε))
@@ -253,4 +256,46 @@ Qed.
       Not sure where that initial outer h comes from, or where we'd get the reachability result.
 *)
 
-Definition example_push_trace q n := (havoc@q)*⋆(clos_refl_trans _ eq)⋆
+(* TODO: how do we represent alloc? *)
+Require Import TrieberStack.
+Definition push_op n (o o':option (ref{Node|any}[local_imm,local_imm])) (h h':heap) : Prop :=
+  exists hd, exists hd', h'[hd']=(mkNode n hd) /\ o=hd /\ o'=(Some hd').
+CoFixpoint example_push_trace (q:ts) (n:nat) :=
+  (remote (deltaTS@q))~>
+  (local (clos_refl_trans _ eq))~>
+  (remote (deltaTS@q))~>
+  (* TODO: allocation followed by more interference? on structure + new allocation? *)
+  (choice ((local (clos_refl_trans _ eq))~>(example_push_trace q n))
+          ((local ((push_op n)@q))~>ε))~>
+  (remote (deltaTS@q)) (* TODO: and interfere on new allocation...? *)
+.
+
+Example push_spec (q:ts) n := (remote (deltaTS@q))~>(local ((push_op n)@q))~>(remote (deltaTS@q))~>ε.
+
+Lemma push_refine : forall q n, example_push_trace q n ≪ push_spec q n.
+Proof.
+  intros.
+  cofix. (* If I admit, must clear coIH first, since otherwise the resulting partial term looks unguarded. *)
+  unfold push_spec.
+  rewrite (trace_dup_eq (example_push_trace q n)).
+  compute[example_push_trace trace_dup]. fold example_push_trace.
+  etransitivity. apply refine_reassoc.
+  etransitivity. apply refine_reassoc.
+  etransitivity. apply refine_left. etransitivity. apply refine_left. apply refine_merge_passive_l.
+      apply refine_merge_remote_trans.
+      (* TODO: transitive (deltaTS@q).  Don't think this actually holds, but we should be able to merge... maybe the
+         trace should use the reflexive transitive closure of deltaTS as the interference... *) clear push_refine. admit.
+  constructor.
+  etransitivity. apply refine_add_tail.
+  etransitivity. apply refine_reassoc'.
+  constructor.
+  assert (forall Q R S, Q ≪ S -> R ≪ S -> (choice Q R) ≪ S) by (clear push_refine; admit). (* Should be new axiom *)
+  apply H; clear H.
+  etransitivity. apply refine_merge_passive_r.
+  (* Messed up coinductive hyp... want [apply push_refine.] but coIH is ≪ push_spec, goal is ≪ local (push_op) *)
+  clear push_refine. admit.
+  etransitivity. apply refine_drop_tail. reflexivity.
+Qed.
+  
+  
+  
