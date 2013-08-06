@@ -37,8 +37,8 @@ Module Type RCC.
 *)
   Parameter rcc_write : forall {Γ Γ'}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}{l:lock}{w:var}{pf:tymember w (ref{lockwitness l | locked}[empty,locked-->unlocked]) Γ}(x:rccref A P R G l)(e:rgref Γ A Γ')
                                (meta_x_deref:rgref Γ A Γ') (meta_e_fold:rgref Γ A Γ')
-                               {guar:forall h env, G (valueOf _ _ _ env h meta_x_deref) (valueOf _ _ _ env h e) h (hwrite x (valueOf _ _ _ env h e) h)}
-                               {pres:(forall h env, P (valueOf _ _ _ env h meta_x_deref) h -> P (valueOf _ _ _ env h meta_e_fold) (hwrite x (valueOf _ _ _ env h meta_e_fold) h))}
+                               {guar:forall h env, G (valueOf env h meta_x_deref) (valueOf env h e) h (hwrite x (valueOf env h e) h)}
+                               {pres:(forall h env, P (valueOf env h meta_x_deref) h -> P (valueOf env h meta_e_fold) (hwrite x (valueOf env h meta_e_fold) h))}
                                , rgref Γ unit Γ'.
 
   Parameter rcc_alloc : forall {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (l:lock) (e:T), 
@@ -79,8 +79,8 @@ Module RCCImpl : RCC.
       @write' Γ A _ P R G _ x e meta_x meta_e _ _.*)
   Program Definition rcc_write {Γ Γ'}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}{l:lock}{w:var}{pf:tymember w (ref{lockwitness l | locked}[empty,locked-->unlocked]) Γ}(x:rccref A P R G l)(e:rgref Γ A Γ')
                                (meta_x_deref:rgref Γ A Γ') (meta_e_fold:rgref Γ A Γ')
-                               {guar:forall h env, G (valueOf _ _ _ env h meta_x_deref) (valueOf _ _ _ env h e) h (hwrite l _ _ _ _ x (valueOf _ _ _ env h e) h)}
-                               {pres:(forall h env, P (valueOf _ _ _ env h meta_x_deref) h -> P (valueOf _ _ _ env h meta_e_fold) (hwrite _ _ _ _ _ x (valueOf _ _ _ env h meta_e_fold) h))}
+                               {guar:forall h env, G (valueOf env h meta_x_deref) (valueOf env h e) h (hwrite l _ _ _ _ x (valueOf env h e) h)}
+                               {pres:(forall h env, P (valueOf env h meta_x_deref) h -> P (valueOf env h meta_e_fold) (hwrite _ _ _ _ _ x (valueOf env h meta_e_fold) h))}
                                : rgref Γ unit Γ' :=
                                @write_imp_exp Γ Γ' A _ P R G _ x e meta_x_deref meta_e_fold guar pres.
 
@@ -123,7 +123,7 @@ Section RaceFreeMonotonicCounter.
     @rcc_write Γ Γ nat _ any increasing increasing _ l _ _ p
         (@pureApp _ _ _ _ _ (plus 1) (@rcc_read Γ _ _ _ _ _ _ l w pf p _ _))
         ({{{@rcc_read Γ _ _ _ _ _ _ l w pf p _ _}}})
-        ({{{pureApp _ _ _ _ _ (plus 1) (@rcc_read Γ _ _ _ _ _ _ l w pf p _ _)}}}) _ _.
+        ({{{@pureApp _ _ _ _ _ (plus 1) (@rcc_read Γ _ _ _ _ _ _ l w pf p _ _)}}}) _ _.
   Next Obligation.
     (* And again, tripped up by opacity of Program's obligation solutions... *)
     unfold inc_monotonic_obligation_8. unfold inc_monotonic_obligation_6.
