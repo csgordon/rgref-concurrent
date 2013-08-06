@@ -159,3 +159,9 @@ Axiom RGFix3 : forall { Γ Γ' }(t t2 t3 t':Set),
 Axiom RGFix4 : forall { Γ Γ' }(t t2 t3 t4 t':Set), 
     ((t -> t2 -> t3 -> t4 -> rgref Γ t' Γ') -> (t -> t2 -> t3 -> t4 -> rgref Γ t' Γ')) ->
     t -> t2 -> t3 -> t4 -> rgref Γ t' Γ'.
+
+(** *** Fixpoint definitional axioms *)
+Axiom RGFix_unfold : forall {Γ Γ'}(t t':Set)(f:(t -> rgref Γ t' Γ') -> (t -> rgref Γ t' Γ')),
+                       RGFix t t' f = f (RGFix t t' f).
+Axiom RGFix2_unfold : forall {Γ Γ'}(t t2 t':Set)(f:(t -> t2 -> rgref Γ t' Γ') -> (t -> t2 -> rgref Γ t' Γ')),
+                       RGFix2 t t2 t' f = f (RGFix2 t t2 t' f).
