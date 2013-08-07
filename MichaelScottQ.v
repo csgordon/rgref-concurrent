@@ -54,12 +54,6 @@ Lemma stable_node' : stable validNode' deltaNode'.
 Qed.
 Hint Resolve stable_node'.
 
-(*Definition clean_node_ptr : ref{Node|validNode}[deltaNode,deltaNode] -> ref{Node|validNode'}[deltaNode',deltaNode'].
-  intros.
-  assert (H1 := validity). assert (H2 := delta_eq).
-  compute in *. destruct H2.
-  eapply convert; eauto. intros; firstorder.
-Defined.*)
 Definition noderef := ref{Node|validNode}[deltaNode,deltaNode].
   
 (** ** A queue base, for head (and eventually tail) pointer(s).
@@ -104,12 +98,12 @@ Inductive msq_contains : hrel MSQ -> Prop :=
               msq_contains RR.
 Instance msq_containment : Containment MSQ := { contains := msq_contains }.
 Instance nd_fold : rel_fold Node.
-  (* TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
+  (** TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
 Print rel_fold.
   eapply Build_rel_fold. intros. exact H.
 Defined.
 Instance msq_fold : rel_fold MSQ.
-  (* TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
+  (** TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
   eapply Build_rel_fold. intros. exact H.
 Defined.
 
@@ -119,7 +113,7 @@ Lemma precise_valid_node : precise_pred validNode'.
   eapply IHvalidNode'. intros.
   Require Import Coq.Program.Equality.
   dependent induction H1.
-    (* This case is a messy contradiction, induction tried to use the reflexively reachable case for things w/ wrong types *) admit.
+    (** This case is a messy contradiction, induction tried to use the reflexively reachable case for things w/ wrong types *) admit.
     eapply H0. eapply trans_reachable with (i := tl). constructor. eapply directly_reachable. assumption.
     eapply H0. clear IHreachable_from_in. eapply trans_reachable with (i := tl). constructor. eapply trans_reachable with (i := i); eauto.
 Qed.
@@ -152,7 +146,7 @@ Qed.
 Hint Resolve precise_valid_node2 precise_delta_node2.
 Lemma delta_refl : hreflexive deltaNode.
 Proof. compute. intros. destruct delta_eq. apply H0.
-       (* TODO: This may actually be false at the moment; need to fix this *)
+       (** TODO: This may actually be false at the moment; need to fix this *)
 Admitted.
 Hint Resolve delta_refl.
 
@@ -192,14 +186,15 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
                                                        if success then rgret (Some n) else rec q) (!hd)
                            end _) (!sent)
     end) q.
-Next Obligation. (* δmsq guarantee proof *)
-  apply msq_dequeue with (n := x). (* TODO: Follows from appropriate !x=h[x] assumption... *) admit.
+Next Obligation. (** δmsq guarantee proof *)
+  apply msq_dequeue with (n := x). (** TODO: Follows from appropriate !x=h[x] assumption... *) admit.
 Qed.
-Next Obligation. subst. (* TODO: Need to fix up induction principle for this to work right. *) admit.
+Next Obligation. subst. (** TODO: Need to fix up induction principle for this to work right. *) admit.
 Qed.
-(* TODO: PROBLEM: folding the δmsq restriction through the list when finding the tail to enqueue means δmsq must account for enqueues.
+(** TODO: PROBLEM: folding the δmsq restriction through the list when finding the tail to enqueue means δmsq must account for enqueues.
    Currently it doesn't. *)
 
+(** ** Field map for the M&S Queue *)
 Require Import RGref.DSL.Fields.
 
 Inductive NFields : Set := val | next.
@@ -215,8 +210,10 @@ Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[
     setF := fun v fv => Node_rec (fun x tl => mkNode x fv) v
 }.
 
-(* TODO: fCAS and CAS need to enforce Safe on the expressions *)
+(** ** M&S Queue Operations *)
+(** TODO: fCAS and CAS need to enforce Safe on the expressions *)
 Local Obligation Tactic := intros; eauto with typeclass_instances; repeat constructor; compute; eauto.
+(** *** Enqueue operation *)
 Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
   RGFix _ unit (fun loop tl =>
                   best_tl <- (RGFix _ _ (fun chase tl => match (tl ~> next) with None => rgret tl | Some tl' => chase tl' end) tl) ;
@@ -240,7 +237,7 @@ Next Obligation. (* deltaNode *)
   subst tl'.
   destruct H2.
   eapply node_append.
-  (* TODO: Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl)... 
+  (** TODO: Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl)... 
      Could add some assumptions to share_field_CAS guarantee obligation that transfer 
      non-pointer-equivalence based on incompatible rely/guarantee to the result, e.g.:
          ∀ P R G (x:ref{aT|P}[R,G]), ¬(G⊆aR)∨¬(aG⊆R) → ¬(s≡x)
@@ -254,3 +251,6 @@ Next Obligation. (* deltaNode *)
 Qed.  
 Next Obligation. (* a Set.... probably from field read folding... *) 
   exact (rgfold deltaNode deltaNode). Defined.
+
+(** *** Dequeue operation *)
+(** TODO ? *)

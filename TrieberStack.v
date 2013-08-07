@@ -1,22 +1,20 @@
 Require Import RGref.DSL.DSL.
 Require Import RGref.DSL.Concurrency.
 
-(** Trieber Stack
+(** * Trieber Stack
     A lock-free stack implementation. *)
-(** Luckily, we can escape the induction-recursion encoding since
+(** ** Basic heap structure, and rely/guarantee interactions *)
+(** Luckily, we can escape the induction-induction encoding since
     nodes are constant. *)
 Inductive Node : Set :=
   | mkNode : nat -> option (ref{Node|any}[local_imm,local_imm]) -> Node.
-Print ImmediateReachability.
 Global Instance reach_ts_node : ImmediateReachability Node :=
 { imm_reachable_from_in := fun T P R G r nd =>
                              match nd with (mkNode n tl) =>
                                              imm_reachable_from_in r tl
                              end }.
-Print Containment.
 Global Instance node_contains : Containment Node :=
-{ contains := fun R => True }. (* the recursive refs are heap-agnostic *)
-Print rel_fold.
+{ contains := fun R => True }. (* the recursive refs are heap-agnostic (immutable) *)
 Global Instance node_fold : rel_fold Node :=
 {
   rgfold := fun R G => Node; (* Nodes grant no heap mutation permission to reachable state *)
@@ -31,7 +29,7 @@ Inductive deltaTS : hrel (option (ref{Node|any}[local_imm,local_imm])) :=
                                     deltaTS hd (Some hd') h h'
   | ts_pop : forall n hd hd' h h', h[hd]=(mkNode n hd') ->
                                    deltaTS (Some hd) hd' h h'.
-
+(** ** Meta properties of TS-specific rely/guarantee relations *)
 Lemma precise_deltaTS : precise_rel deltaTS.
 Proof.
   red. intros. induction H1.
@@ -50,10 +48,13 @@ Hint Resolve hrefl_deltaTS.
                                                        
 Definition ts := ref{option (ref{Node|any}[local_imm,local_imm])|any}[deltaTS,deltaTS].
 
+(** ** Standard operations *)
+(** *** Allocating a new stack *)
 Program Definition alloc_ts {Γ} (u:unit) : rgref Γ ts Γ :=
   Alloc None.
 
 (*Local Obligation Tactic := compute; eauto.*)
+(** *** Push operation *)
 Program Definition push_ts {Γ} : ts -> nat -> rgref Γ unit Γ :=
   RGFix2 _ _ _ (fun rec s n =>
     let tl := !s in
@@ -83,8 +84,8 @@ Qed.
 
 Program Definition asB T R G B `{rel_fold T} (pf:rgfold R G = B) (b:rgfold R G) : B.
 intros. rewrite pf in b. exact b. Defined.
-Print asB.
 
+(** *** Pop operation *)
 Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec s =>
     match !s with
@@ -101,8 +102,8 @@ Next Obligation.
   split; red; intros. red in H. destruct H. eauto.
   split; eauto. intros. constructor.
 Defined.
-Next Obligation. (* Guarantee Satisfaction *)
-  (* Need to export a couple assumptions locally inside this lemma:*)
+Next Obligation. (** Guarantee Satisfaction *)
+  (** Need to export a couple assumptions locally inside this lemma:*)
   assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:rel_fold T} rpf (epf:rgfold R G=B), deref rpf epf r = asB R G epf (@fold T _ R G (h[r]))). admit.
   assert (Hs := H _ _ _ _ s). 
   assert (Hhd := H _ _ _ _ hd). 

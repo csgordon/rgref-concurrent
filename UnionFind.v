@@ -2,6 +2,11 @@ Require Import RGref.DSL.DSL.
 Require Import RGref.DSL.Concurrency.
 Require Import RGref.DSL.Fields.
 
+(** * Lock-Free Linearizable Union-Find
+    We're following Anderson and Woll's STOC'91 paper 
+    "Wait-free Parallel Algorithms for the Union Find Problem."
+*)
+(** ** Basic structures, field maps *)
 Inductive cell (n:nat) : Set :=
   | mkCell : nat -> Fin.t n -> cell n.
 Instance ir_cell {n:nat} : ImmediateReachability (cell n) :=
@@ -20,7 +25,7 @@ Instance cell_rank {n:nat} : FieldType (cell n) F rank nat :=
 Instance cell_parent {n:nat} : FieldType (cell n) F parent (Fin.t n) :=
   { getF := fun x => match x with mkCell r p => p end;
     setF := fun x v => match x with mkCell r p => mkCell _ r v end }.
-
+(** ** A few useful results about finitely-bounded natural numbers *)
 Section FinResults.
 
 Definition fin_beq {n:nat} (x y:Fin.t n) : bool :=
@@ -71,6 +76,7 @@ Qed.
 
 End FinResults.
   
+(** ** Useful predicates and properties of the union-find array structure *)
 Inductive root (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Fin.t n -> Prop :=
   | self_root : (getF (h[x<|i|>])) = i ->
                 root n x h i i
@@ -95,14 +101,15 @@ Proof.
   destruct IHterminating_ascent. exists x0. eapply trans_root; eauto.
 Qed.
 
+(** ** Change relations and meta properties. *)
 Inductive δ (n:nat) : hrel (uf n) :=
-    (* Technically this permits path extension as well as path compression...
+    (** Technically this permits path extension as well as path compression...
        and permits creating a cycle... *)
   | path_compression : forall x f c h h' (rt:Fin.t n),
                          root n x h f rt ->
                          root n x h (getF (h[c])) rt ->
                          δ n x (array_write x f c) h h'
-  (* Union sets the parent and rank of a self-parent *)
+  (** Union sets the parent and rank of a self-parent *)
   | path_union : forall A x xp xr c h h' y xr' yr yp,
                    root n A h x x ->
                    h[(array_read A x)] = mkCell n xr xp ->
@@ -111,9 +118,10 @@ Inductive δ (n:nat) : hrel (uf n) :=
                    xr < yr \/ (xr=yr /\ (proj1_sig (to_nat x) < proj1_sig (to_nat y))) ->
                    δ n A (array_write A x c) h h'
 .
-                         
+(** TODO *)
 Axiom stable_φ_δ : forall n, stable (φ n) (δ n).
 Hint Resolve stable_φ_δ.
+
 Lemma precise_φ : forall n, precise_pred (φ n).
 Proof.
   intros; red; intros.
@@ -124,6 +132,7 @@ Proof.
   eapply trans_ascent. rewrite <- H0; eauto.
   constructor. compute. eexists; reflexivity.
 Qed.
+(** TODO *)
 Lemma precise_δ : forall n, precise_rel (δ n).
 Admitted.
 Hint Resolve precise_φ precise_δ.
@@ -140,9 +149,11 @@ Proof.
   rewrite H1. eapply self_root; eauto.
   rewrite H2. assumption.
 Qed.
-  
 Hint Resolve refl_δ.
-Check alloc.
+
+(** ** Union-Find Operations *)
+
+(** *** Helper property *)
 Definition init_cell {n:nat} (i:nat) (pf:i<n) : hpred (cell n) :=
   (fun x h => x = mkCell n 0 (of_nat_lt pf)).
 Lemma prec_init : forall n i pf, precise_pred (@init_cell n i pf).
@@ -152,10 +163,8 @@ Lemma stable_init : forall n i pf, stable (@init_cell n i pf) local_imm.
 Proof. intros. red; intros. inversion H0; subst. auto. Qed.
 Hint Resolve stable_init.
 
+(** *** Allocation of a union-find structure *)
 Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf n|φ n}[δ n, δ n]) Γ :=
-  (*arr <- indep_array n (fun i pf => Alloc (mkCell n 0 (of_nat_lt pf)));
-  Alloc arr.*)
-  (*indep_array_conv_alloc n (fun i pf => Alloc (mkCell n 0 (of_nat_lt pf))) _ _.*)
   indep_array_conv_alloc n (fun i pf => alloc (init_cell i pf) local_imm local_imm 
                                               (mkCell n 0 (of_nat_lt pf)) _ _ _ _ _ _
                            ) _ _.
@@ -195,6 +204,7 @@ Hint Resolve uf_folding.
 Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
 Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
 
+(** *** UpdateRoot *)
 Require Import Coq.Arith.Arith.
 Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) (oldrank:nat) (y:Fin.t n) (newrank:nat) : rgref Γ bool Γ :=
   let old := (A ~> x) in
@@ -206,12 +216,13 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) 
       fCAS(A → x, old, new)
   )
 .
-Next Obligation. (* TODO: UpdateRoot doesn't carry enough information yet to prove δ.
+Next Obligation. (** TODO: UpdateRoot doesn't carry enough information yet to prove δ.
                     Maybe we need to refine something (A? old?) to say x is not its own parent,
                     in such a way as to provide enough information to prove the union case of δ. *)
 Admitted.
 
-(* TODO: Path compression *)
+(** *** Find operation *)
+(** TODO: Path compression *)
 Program Definition Find {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (f:Fin.t n) : rgref Γ (Fin.t n) Γ :=
   RGFix _ _ (fun find_rec f =>
                let c : (ref{cell n|any}[local_imm,local_imm]) := (r ~> f) in
@@ -231,6 +242,8 @@ Next Obligation. unfold Find_obligation_5. eauto. Qed.
 Next Obligation. intuition. Qed.
 Next Obligation. unfold Find_obligation_5. eauto. Qed.
 
+(** **** Field projection axioms
+    TODO: Relocate to RGref.DSL.Fields. *)
 Axiom field_projection_commutes : 
     forall h F T P R G Res (r:ref{T|P}[R,G]) f
            (rf:rel_fold T) (rgf:@rgfold T rf R G = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
@@ -350,7 +363,7 @@ Definition gt x y := nat_lt_ge_bool y x.
 Definition ignore {Γ Γ' T} (C:rgref Γ T Γ') : rgref Γ unit Γ' :=
   _ <- C;
   rgret tt.
-
+(** *** Union operation *)
 Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : rgref Γ unit Γ :=
   RGFix _ _ (fun TryAgain _ =>
                x' <- Find r x;
@@ -358,7 +371,7 @@ Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : r
                if (fin_beq x' y')
                then rgret tt
                else (
-                   (* TODO: revisit for non-atomic multiple reads, sequencing *)
+                   (** TODO: revisit for non-atomic multiple reads, sequencing *)
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r x (@array_fields n _) (@array_field_index n _ x))
                                           rank _ (@cell_rank n));
@@ -369,7 +382,7 @@ Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : r
                    (if (orb (gt xr yr)
                            (andb (beq_nat xr yr)
                                  (gt (to_nat x) (to_nat y))))
-                   then _ (* TODO: Swap(x,y); Swap(xr,yr); <-- Is this updating imperative variables? *)
+                   then _ (** TODO: Swap(x,y); Swap(xr,yr); <-- Is this updating imperative variables? *)
                    else rgret tt) ;
                    ret <- UpdateRoot r x xr y yr;
                    if ret
@@ -382,6 +395,7 @@ Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : r
             )
         tt.
   
+(** *** Sameset test *)
 Program Definition Sameset {Γ n} (A:ref{uf n|φ n}[δ n,δ n]) x y :=
   RGFix _ _ (fun TryAgain _ =>
                x <- Find A x;
