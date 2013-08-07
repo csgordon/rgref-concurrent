@@ -227,7 +227,7 @@ Lemma cotrace_refinement_morphism_test : forall c, coinc_trace_test c ≪ coinc_
 Proof.
   intros; unfold coinc_trace_test; unfold coinc_spec.
   setoid_rewrite teq_assoc1.
-  (* To do much more with setoids, we need to be able to rewrite inside trace
+  (** To do much more with setoids, we need to be able to rewrite inside trace
      constructors, which means a Proper instance for each constructor... *)
   etransitivity. apply refine_reassoc.
   repeat constructor.
@@ -237,7 +237,7 @@ Proof.
   compute; intuition.
 Qed.
 
-(* TODO:
+(** TODO:
    1: variable binding, probably using some kind of injection of a function from bound vars to traces.
       Trieber stack push/pop is a good test of those, since the binding ensures stack is preserved.
       Could I use the observation of the (possibly refined) guarantee to obviate the need for
@@ -263,7 +263,7 @@ CoFixpoint example_push_trace (q:ts) (n:nat) :=
   (remote (deltaTS@q))~>
   (local (clos_refl_trans _ eq))~>
   (remote (deltaTS@q))~>
-  (* TODO: allocation followed by more interference? on structure + new allocation? *)
+  (** TODO: allocation followed by more interference? on structure + new allocation? *)
   (choice ((local (clos_refl_trans _ eq))~>(example_push_trace q n))
           ((local ((push_op n)@q))~>ε))~>
   (remote (deltaTS@q)) (* TODO: and interfere on new allocation...? *)
@@ -274,7 +274,7 @@ Example push_spec (q:ts) n := (remote (deltaTS@q))~>(local ((push_op n)@q))~>(re
 Lemma push_refine : forall q n, example_push_trace q n ≪ push_spec q n.
 Proof.
   intros.
-  cofix. (* If I admit, must clear coIH first, since otherwise the resulting partial term looks unguarded. *)
+  cofix. (** If I admit, must clear coIH first, since otherwise the resulting partial term looks unguarded. *)
   unfold push_spec.
   rewrite (trace_dup_eq (example_push_trace q n)).
   compute[example_push_trace trace_dup]. fold example_push_trace.
@@ -282,16 +282,16 @@ Proof.
   etransitivity. apply refine_reassoc.
   etransitivity. apply refine_left. etransitivity. apply refine_left. apply refine_merge_passive_l.
       apply refine_merge_remote_trans.
-      (* TODO: transitive (deltaTS@q).  Don't think this actually holds, but we should be able to merge... maybe the
+      (** TODO: transitive (deltaTS@q).  Don't think this actually holds, but we should be able to merge... maybe the
          trace should use the reflexive transitive closure of deltaTS as the interference... *) clear push_refine. admit.
   constructor.
   etransitivity. apply refine_add_tail.
   etransitivity. apply refine_reassoc'.
   constructor.
-  assert (forall Q R S, Q ≪ S -> R ≪ S -> (choice Q R) ≪ S) by (clear push_refine; admit). (* Should be new axiom *)
+  assert (forall Q R S, Q ≪ S -> R ≪ S -> (choice Q R) ≪ S) by (clear push_refine; admit). (** Should be new axiom *)
   apply H; clear H.
   etransitivity. apply refine_merge_passive_r.
-  (* Messed up coinductive hyp... want [apply push_refine.] but coIH is ≪ push_spec, goal is ≪ local (push_op) *)
+  (** Messed up coinductive hyp... want [apply push_refine.] but coIH is ≪ push_spec, goal is ≪ local (push_op) *)
   clear push_refine. admit.
   etransitivity. apply refine_drop_tail. reflexivity.
 Qed.
