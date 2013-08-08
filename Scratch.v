@@ -11,6 +11,9 @@ Definition inc_spec : spec monotonic_counter := (λ c h h', increasing (h[c]) (h
 Definition localize {T P R G} (R':hrel T) (r:ref{T|P}[R,G]) : relation heap :=
   λ h h', R' (h[r]) (h'[r]) h h'.
 Infix "@" := (localize) (at level 35).
+Definition observe {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap :=
+  λ h h', h=h' /\ P' (h[r]) h.
+Definition assert {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap := observe P' r.
 
 
 Module WithRawRelations.
@@ -166,10 +169,12 @@ Proof.
 Qed.
 Instance sym_trace_equiv : Symmetric trace_equiv.
 Proof.
-      compute. intros. 
-      destruct H; constructor. admit. admit.
-          (*cofix. rewrite (trace_dup_eq x); rewrite (trace_dup_eq y). 
-                 destruct sym_trace_equiv; destruct R; simpl; constructor.*)
+      compute. 
+      cofix.
+      intros.
+      destruct H; try solve[constructor].
+
+      constructor; eapply sym_trace_equiv; auto.
 Qed.
 
 Program Instance trace_setoid : Setoid trace :=
@@ -178,7 +183,7 @@ Next Obligation.
   constructor.
       compute; constructor.
       exact sym_trace_equiv.
-      admit. (* Don't have the hang of coinduction yet *)
+      admit.
 Qed.
 
 Instance refine_equiv : Proper (trace_equiv ==> trace_equiv ==> iff) refines.
@@ -238,22 +243,22 @@ Proof.
 Qed.
 
 (** TODO:
-   1: variable binding, probably using some kind of injection of a function from bound vars to traces.
+   1: Variable binding, probably using some kind of injection of a function from bound vars to traces.
       Trieber stack push/pop is a good test of those, since the binding ensures stack is preserved.
       Could I use the observation of the (possibly refined) guarantee to obviate the need for
       binding?
-   2: distinguishing visible local effects that don't change the abstract state from those that do,
+   2: Distinguishing visible local effects that don't change the abstract state from those that do,
       e.g. distinguishing the tail update in MSQ from insertion.  Maybe, if I'm struck with sudden
       insight, this might let me figure out how to do helping updates (the hard part there is probably
       folding).
-   3: Commutativity / moving / general handling of allocation
+   3: Allocation properties: commutativity / moving / general handling
    4: Reachability: e.g., handling update at tail as an update at the head.
       Might consider a refinement axiom like:
       ∀ ℓ₀, (ℓ:ref{T|P}[R,G]), imm_reachable_from ℓ h[l₀] -> 
           (∀ h h', G'@ℓ h h' -> G''@ℓ₀ h h') ->
           G'@ℓ ≪ G''@ℓ₀
       Not sure where that initial outer h comes from, or where we'd get the reachability result.
-   5. Allocations?
+   5. Return values (depends on binding, since return is a separate trace event)
 *)
 
 Require Import TrieberStack.
