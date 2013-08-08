@@ -74,12 +74,14 @@ End WithRawRelations.
    remote havoc* refines remote havoc, local havoc* (totally non-lin) doesn't refine local havoc (atomic blocK)
    *)
 Inductive action : Prop :=
-  | id : action
-  | remote : relation heap -> action
-  | local : relation heap -> action
+  | act_id : action
+  | act_remote : relation heap -> action
+  | act_local : relation heap -> action
 .
-CoInductive trace : Prop :=
+CoInductive trace {A:Set} : Prop :=
   | epsilon : trace
+  | result : A -> trace
+  | bind : forall {T:Set} (f:T->trace), trace
   | obs : action -> trace
   | append : trace -> trace -> trace
   (* 0 or more Iterations *)
@@ -90,24 +92,21 @@ CoInductive trace : Prop :=
 Infix "~>" := (append) (at level 49, right associativity).
 (*Infix "⋆" := (append) (at level 57, right associativity).*)
 Notation "'ε'" := (epsilon) (at level 0).
-Coercion obs : action >-> trace.
+(*Coercion obs (A:Set) : action >-> (@trace A).*)
+Definition remote {A:Set} (R:relation heap) : @trace A := obs (act_remote R).
+Definition local {A:Set} (R:relation heap) : @trace A := obs (act_local R).
+Notation "(ζ x => e )" := (bind (fun x => e)).
 
 Program Definition coinc_trace_test (c:monotonic_counter) := 
   (remote (havoc@c)) ~>
   (star ((local (clos_refl_trans heap eq))~>(remote (havoc@c))~>ε)) ~>
-  ((local (increasing@c))~>(remote (havoc@c))~>ε).
-(*Program Definition coinc_trace_test (c:monotonic_counter) := 
-  (remote (havoc@c)) ~>
-                     (star ((local (clos_refl_trans heap eq))~>(remote (havoc@c))~>ε)
-                           ((local (increasing@c))~>(remote (havoc@c))~>ε)).
+  ((local (increasing@c))~>(remote (havoc@c))~>(result tt)~>ε).
+
 Definition coinc_spec (c:monotonic_counter) :=
-  (remote (havoc@c))~>(local (increasing@c))~>(remote (havoc@c))~>ε.
-*)
-Definition coinc_spec (c:monotonic_counter) :=
-  (remote (havoc@c))~>(local (increasing@c))~>(remote (havoc@c))~>ε.
+  (remote (havoc@c))~>(local (increasing@c))~>(remote (havoc@c))~>(result tt)~>ε.
 
 (* Better have infinite refinement proofs if we have infinite traces... *)
-CoInductive refines : relation trace :=
+CoInductive refines {A:Set} : relation (@trace A) :=
   | refine_refl : forall R, refines R R
   | refine_local : forall a a' R, inclusion _ a a' -> refines ((local a)~>R) ((local a')~>R)
   | refine_left : forall Q Q' R, refines Q Q' -> refines (Q~>R) (Q'~>R)
@@ -136,7 +135,7 @@ CoInductive refines : relation trace :=
   | refine_drop_tail : forall R, refines (R~>ε) R
 .
 Infix "≪" := (refines) (at level 63).
-CoInductive trace_equiv : relation trace :=
+CoInductive trace_equiv {A:Set} : relation (@trace A) :=
   | teq_refl : forall R, trace_equiv R R
   | teq_unfold_star : forall R, trace_equiv (star R) (star (R~>R))
   | teq_fold_star : forall R, trace_equiv (star (R~>R)) (star R)
@@ -149,25 +148,27 @@ CoInductive trace_equiv : relation trace :=
 Infix "≈" := (trace_equiv) (at level 62).
 Require Import Coq.Classes.SetoidClass.
 Require Import Coq.Classes.Morphisms.
-Instance trans_refine : Transitive refines.
+Instance trans_refine {A:Set} : Transitive (@refines A).
 Proof. compute; intros. eapply refine_trans; eauto. Qed.
-Instance preord_refine : PreOrder refines.
+Instance preord_refine {A:Set} : PreOrder (@refines A).
 Proof. constructor; auto with typeclass_instances.
        compute. intros; constructor.
 Qed.
-Definition trace_dup (t:trace) : trace :=
+Definition trace_dup {A:Set}(t:@trace A) : trace :=
   match t with
   | epsilon => epsilon
+  | result x => result x
+  | bind _ f => bind f
   | obs a => obs a
   | append x y => append x y
   | star x => star x
   | choice x y => choice x y
   end.
-Lemma trace_dup_eq : forall t, t = trace_dup t.
+Lemma trace_dup_eq : forall A (t:@trace A), t = trace_dup t.
 Proof.
   intros. destruct t; reflexivity.
 Qed.
-Instance sym_trace_equiv : Symmetric trace_equiv.
+Instance sym_trace_equiv {A:Set} : Symmetric (@trace_equiv A).
 Proof.
       compute. 
       cofix.
@@ -177,7 +178,7 @@ Proof.
       constructor; eapply sym_trace_equiv; auto.
 Qed.
 
-Program Instance trace_setoid : Setoid trace :=
+Program Instance trace_setoid {A:Set} : Setoid (@trace A) :=
 { equiv := trace_equiv; setoid_equiv := _}.
 Next Obligation.
   constructor.
@@ -186,21 +187,21 @@ Next Obligation.
       admit.
 Qed.
 
-Instance refine_equiv : Proper (trace_equiv ==> trace_equiv ==> iff) refines.
+Instance refine_equiv {A:Set} : Proper (trace_equiv ==> trace_equiv ==> iff) (@refines A).
 Proof.
   compute. intros; split; intros.
   (* still a coinduction novice *)
 Admitted.
-Instance equiv_imp : Proper (trace_equiv ==> trace_equiv ==> Basics.impl) trace_equiv.
+Instance equiv_imp {A:Set} : Proper (trace_equiv ==> trace_equiv ==> Basics.impl) (@trace_equiv A).
 Proof.
   compute; intros.
   (* More coinduction... *)
 Admitted.
-Instance equiv_imp' {x} : Proper (trace_equiv ==> Basics.impl) (trace_equiv x).
+Instance equiv_imp' {A:Set} {x} : Proper (trace_equiv ==> Basics.impl) (@trace_equiv A x).
 Admitted.
-Instance equiv_imp'' : Proper (trace_equiv ==> eq ==> Basics.impl) (trace_equiv).
+Instance equiv_imp'' {A:Set} : Proper (trace_equiv ==> eq ==> Basics.impl) (@trace_equiv A).
 Admitted.
-Instance equiv_equiv : Proper (trace_equiv ==> trace_equiv ==> iff) trace_equiv.
+Instance equiv_equiv {A:Set} : Proper (trace_equiv ==> trace_equiv ==> iff) (@trace_equiv A).
 Proof.
   compute; intros; split; intros.
   setoid_rewrite H0 in H1.
@@ -219,11 +220,11 @@ Proof.
   eapply refine_remote_trans.
   compute; intuition.
 Qed.
-Instance app_equiv : Proper (trace_equiv ==> trace_equiv ==> trace_equiv) append.
+Instance app_equiv {A:Set} : Proper (trace_equiv ==> trace_equiv ==> trace_equiv) (@append A).
 Proof.
   compute; intros. constructor; eauto.
 Qed.
-Instance app_equiv' {x} : Proper (trace_equiv ==> trace_equiv) (append x).
+Instance app_equiv' {A:Set} {x} : Proper (trace_equiv ==> trace_equiv) (@append A x).
 Proof.
   compute; intros. constructor; eauto. constructor.
 Qed.
@@ -271,17 +272,21 @@ CoFixpoint example_push_trace (q:ts) (n:nat) :=
   (** TODO: allocation followed by more interference? on structure + new allocation? *)
   (choice ((local (clos_refl_trans _ eq))~>(example_push_trace q n))
           ((local ((push_op n)@q))~>ε))~>
+  (result tt)~>
   (remote (deltaTS@q)) (* TODO: and interfere on new allocation...? *)
 .
 
-Example push_spec (q:ts) n := (remote (deltaTS@q))~>(local ((push_op n)@q))~>(remote (deltaTS@q))~>ε.
+Example push_spec (q:ts) n :=
+  (remote (deltaTS@q))~>(local ((push_op n)@q))~>(result tt)~>(remote (deltaTS@q))~>ε.
+
+Axiom refine_choice : forall A (Q R S:@trace A), Q ≪ S -> R ≪ S -> (choice Q R) ≪ S.
 
 Lemma push_refine : forall q n, example_push_trace q n ≪ push_spec q n.
 Proof.
   intros.
   cofix. (** If I admit, must clear coIH first, since otherwise the resulting partial term looks unguarded. *)
   unfold push_spec.
-  rewrite (trace_dup_eq (example_push_trace q n)).
+  rewrite (trace_dup_eq _ (example_push_trace q n)).
   compute[example_push_trace trace_dup]. fold example_push_trace.
   etransitivity. apply refine_reassoc.
   etransitivity. apply refine_reassoc.
@@ -292,11 +297,55 @@ Proof.
   constructor.
   etransitivity. apply refine_add_tail.
   etransitivity. apply refine_reassoc'.
+  etransitivity. Focus 2. apply refine_reassoc'.
+  etransitivity. Focus 2. apply refine_reassoc'.
+  etransitivity. apply refine_reassoc.
   constructor.
-  assert (forall Q R S, Q ≪ S -> R ≪ S -> (choice Q R) ≪ S) by (clear push_refine; admit). (** Should be new axiom *)
-  apply H; clear H.
+  etransitivity. Focus 2. apply refine_reassoc.
+  constructor.
+  apply refine_choice.
   etransitivity. apply refine_merge_passive_r.
   (** Messed up coinductive hyp... want [apply push_refine.] but coIH is ≪ push_spec, goal is ≪ local (push_op) *)
   clear push_refine. admit.
   etransitivity. apply refine_drop_tail. reflexivity.
 Qed.
+
+Example read_ctr_spec (c:monotonic_counter) :=
+  (remote (increasing@c))~>
+  (ζ v => (local (observe (λ x h, x=v) c)~>(remote (increasing@c))~>(result v))).
+
+Definition pop_op n x hd' (h h':heap) := exists (hd:ref{Node|any}[local_imm,local_imm]),
+                                                  x=(Some hd) /\ (h[hd])=(mkNode n hd').
+Example pop_spec (q:ts)  :=
+  (remote (deltaTS@q))~>(ζ v => (local ((pop_op v)@q))~>(remote (deltaTS@q))~>(result v)).
+
+Axiom refine_bind_l : forall (A T:Set) (f:T->(@trace A)) Q, (forall t, (f t) ≪ Q) -> (bind f) ≪ Q.
+Axiom refine_bind_r : forall (A T:Set) (f:T->(@trace A)) Q, (forall t, Q ≪ (f t)) -> Q ≪ (bind f).
+Axiom refine_bind_b : forall (A T:Set) (f g:T->(@trace A)), (forall t, f t ≪ g t) -> bind f ≪ (bind g).
+
+CoFixpoint sample_pop_trace (q:ts) :=
+  (remote (deltaTS@q))~>
+  (local (clos_refl_trans _ eq))~>
+  (remote (deltaTS@q))~>
+  (choice ((local (clos_refl_trans _ eq))~>(sample_pop_trace q))
+          (ζ v => (local ((pop_op v)@q))~>(remote (deltaTS@q))~>result v)).
+
+Example pop_test : forall q, sample_pop_trace q ≪ pop_spec q.
+Proof.
+  intros.
+  cofix.
+  unfold pop_spec.
+  rewrite (trace_dup_eq _ (sample_pop_trace q)).
+  compute[sample_pop_trace trace_dup]. fold sample_pop_trace.
+  etransitivity. apply refine_reassoc. etransitivity. apply refine_left. apply refine_merge_passive_l.
+  etransitivity. apply refine_reassoc. etransitivity. apply refine_left. apply refine_merge_remote_trans.
+  (** TODO: again, deltaTS isn't actually transitive, we should be using refl-trans-clos *) clear pop_test. admit.
+  constructor.
+  apply refine_choice.
+  (** TODO: again, coIH is slightly mismatched... *) clear pop_test. admit.
+
+  (** could actually use reflexivity here, but I'd rather play with the bind axioms. *)
+  apply refine_bind_b. intros. repeat constructor.
+Qed.
+(* TODO: Should ζ / bind use existential instead of universal? *)
+  
