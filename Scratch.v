@@ -243,24 +243,30 @@ Proof.
   compute; intuition.
 Qed.
 
-(** TODO:
-   1: Variable binding, probably using some kind of injection of a function from bound vars to traces.
-      Trieber stack push/pop is a good test of those, since the binding ensures stack is preserved.
-      Could I use the observation of the (possibly refined) guarantee to obviate the need for
-      binding?
-   2: Distinguishing visible local effects that don't change the abstract state from those that do,
-      e.g. distinguishing the tail update in MSQ from insertion.  Maybe, if I'm struck with sudden
-      insight, this might let me figure out how to do helping updates (the hard part there is probably
-      folding).
-   3: Allocation properties: commutativity / moving / general handling
-   4: Reachability: e.g., handling update at tail as an update at the head.
+(** Solutions sketched, but not precise:
+    1. Variable binding
+       Using an injection of a function generating traces, which isn't needed too often since
+       observing a precise guarantee can often obviate the need to explicitly bind certain names
+       TODO: Try refining stack push example to a push spec that uses binding to name the intermediate
+       node.... This is a good test of the refinement approach's generality
+    2. Return values
+       Added by including a return type in the trace type, adding a return predicate. Seems to work.
+    3. Distinguishing abstract state updates from concrete-but-not-abstract updates
+       Can probably crib around this using the choice operator, using the same physical rep. for
+       concrete and abstract states, and making things like caching updates optional.
+*)
+(** No Solution Yet:
+    1. Allocations / multiple shared objects: commutativity, thread-locality, etc.
+    2. Reachability: e.g., handling update at tail as an update viewed through the head
       Might consider a refinement axiom like:
       ∀ ℓ₀, (ℓ:ref{T|P}[R,G]), imm_reachable_from ℓ h[l₀] -> 
           (∀ h h', G'@ℓ h h' -> G''@ℓ₀ h h') ->
           G'@ℓ ≪ G''@ℓ₀
       Not sure where that initial outer h comes from, or where we'd get the reachability result.
-   5. Return values (depends on binding, since return is a separate trace event)
+      I think the hindsight paper set example might be the only example we really need this for,
+      unless we do get around to the tail pointer in the MSQ.
 *)
+
 
 Require Import TrieberStack.
 Definition push_op n (o o':option (ref{Node|any}[local_imm,local_imm])) (h h':heap) : Prop :=
