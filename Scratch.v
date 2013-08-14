@@ -89,7 +89,7 @@ CoInductive trace {A:Set} : Prop :=
   (* Nondeterminism *)
   | choice : trace -> trace -> trace
 .
-Infix "~>" := (append) (at level 49, right associativity).
+Infix "~~>" := (append) (at level 49, right associativity).
 (*Infix "⋆" := (append) (at level 57, right associativity).*)
 Notation "'ε'" := (epsilon) (at level 0).
 (*Coercion obs (A:Set) : action >-> (@trace A).*)
@@ -98,52 +98,52 @@ Definition local {A:Set} (R:relation heap) : @trace A := obs (act_local R).
 Notation "(ζ x => e )" := (bind (fun x => e)).
 
 Program Definition coinc_trace_test (c:monotonic_counter) := 
-  (remote (havoc@c)) ~>
-  (star ((local (clos_refl_trans heap eq))~>(remote (havoc@c))~>ε)) ~>
-  ((local (increasing@c))~>(remote (havoc@c))~>(result tt)~>ε).
+  (remote (havoc@c)) ~~>
+  (star ((local (clos_refl_trans heap eq))~~>(remote (havoc@c))~~>ε)) ~~>
+  ((local (increasing@c))~~>(remote (havoc@c))~~>(result tt)~~>ε).
 
 Definition coinc_spec (c:monotonic_counter) :=
-  (remote (havoc@c))~>(local (increasing@c))~>(remote (havoc@c))~>(result tt)~>ε.
+  (remote (havoc@c))~~>(local (increasing@c))~~>(remote (havoc@c))~~>(result tt)~~>ε.
 
 (* Better have infinite refinement proofs if we have infinite traces... *)
 CoInductive refines {A:Set} : relation (@trace A) :=
   | refine_refl : forall R, refines R R
-  | refine_local : forall a a' R, inclusion _ a a' -> refines ((local a)~>R) ((local a')~>R)
-  | refine_left : forall Q Q' R, refines Q Q' -> refines (Q~>R) (Q'~>R)
-  | refine_right : forall Q R R', refines R R' -> refines (Q~>R) (Q~>R')
+  | refine_local : forall a a' R, inclusion _ a a' -> refines ((local a)~~>R) ((local a')~~>R)
+  | refine_left : forall Q Q' R, refines Q Q' -> refines (Q~~>R) (Q'~~>R)
+  | refine_right : forall Q R R', refines R R' -> refines (Q~~>R) (Q~~>R')
   (* Ideally associativity would simply be an equivalence in a HIT... Not sure what the status
      of HITs for coinduction is.
    *)
-  | refine_reassoc : forall Q R S, refines (Q~>R~>S) ((Q~>R)~>S)
-  | refine_reassoc' : forall Q R S, refines ((Q~>R)~>S) (Q~>R~>S)
-  | refine_merge_passive_l : forall Q, refines (Q~>(local (clos_refl_trans heap eq))) Q
-  | refine_merge_passive_r : forall Q, refines ((local (clos_refl_trans heap eq))~>Q) Q
-  | refine_merge_remote_trans : forall Q, transitive _ Q -> refines ((remote Q)~>(remote Q)) (remote Q)
-  | refine_merge_local_trans : forall Q, transitive _ Q -> refines ((local Q)~>(local Q)) (local Q)
+  | refine_reassoc : forall Q R S, refines (Q~~>R~~>S) ((Q~~>R)~~>S)
+  | refine_reassoc' : forall Q R S, refines ((Q~~>R)~~>S) (Q~~>R~~>S)
+  | refine_merge_passive_l : forall Q, refines (Q~~>(local (clos_refl_trans heap eq))) Q
+  | refine_merge_passive_r : forall Q, refines ((local (clos_refl_trans heap eq))~~>Q) Q
+  | refine_merge_remote_trans : forall Q, transitive _ Q -> refines ((remote Q)~~>(remote Q)) (remote Q)
+  | refine_merge_local_trans : forall Q, transitive _ Q -> refines ((local Q)~~>(local Q)) (local Q)
   | refine_trans : forall Q R S, refines Q R -> refines R S -> refines Q S
   | refine_star : forall Q R, refines Q R -> refines (star Q) (star R)
-  | refine_fold_star_a : forall a, refines (a ~> (star (a~>ε))) (star (a~>ε))
+  | refine_fold_star_a : forall a, refines (a ~~> (star (a~~>ε))) (star (a~~>ε))
 (*  | refine_clos : forall Q R, refines Q R -> refines (star Q) (R) <-- Not actually the right semantics *)
 (*  | refine_idemp_clos : forall Q, inclusion _ (Q* ) Q -> refines (Q* ) Q*)
 (*  | refine_havoc_l : forall T P R G (l:ref{T|P}[R,G]) Q, refines (havoc@l⋆Q) Q
   | refine_havoc_r : forall T P R G (l:ref{T|P}[R,G]) Q, refines (Q⋆havoc@l) Q*)
   | refine_remote_trans : forall a, transitive _ a ->
-                                    refines (remote a ~> star (remote a ~> ε)) (remote a ~> ε)
+                                    refines (remote a ~~> star (remote a ~~> ε)) (remote a ~~> ε)
   | refine_remote_trans' : forall a, transitive _ a ->
-                                    refines (remote a ~> star (remote a)) (remote a)
-  | refine_add_tail : forall R, refines R (R~>ε)
-  | refine_drop_tail : forall R, refines (R~>ε) R
+                                    refines (remote a ~~> star (remote a)) (remote a)
+  | refine_add_tail : forall R, refines R (R~~>ε)
+  | refine_drop_tail : forall R, refines (R~~>ε) R
 .
 Infix "≪" := (refines) (at level 63).
 CoInductive trace_equiv {A:Set} : relation (@trace A) :=
   | teq_refl : forall R, trace_equiv R R
-  | teq_unfold_star : forall R, trace_equiv (star R) (star (R~>R))
-  | teq_fold_star : forall R, trace_equiv (star (R~>R)) (star R)
-  | teq_assoc1 : forall Q R S, trace_equiv (Q~>R~>S) ((Q~>R)~>S)
-  | teq_assoc2 : forall Q R S, trace_equiv ((Q~>R)~>S) (Q~>R~>S)
-  | teq_add_tail : forall Q, trace_equiv Q (Q~>ε)
-  | teq_drop_tail : forall Q, trace_equiv (Q~>ε) Q
-  | teq_app : forall Q Q' R R', trace_equiv Q Q' -> trace_equiv R R' -> trace_equiv (Q~>R) (Q'~>R')
+  | teq_unfold_star : forall R, trace_equiv (star R) (star (R~~>R))
+  | teq_fold_star : forall R, trace_equiv (star (R~~>R)) (star R)
+  | teq_assoc1 : forall Q R S, trace_equiv (Q~~>R~~>S) ((Q~~>R)~~>S)
+  | teq_assoc2 : forall Q R S, trace_equiv ((Q~~>R)~~>S) (Q~~>R~~>S)
+  | teq_add_tail : forall Q, trace_equiv Q (Q~~>ε)
+  | teq_drop_tail : forall Q, trace_equiv (Q~~>ε) Q
+  | teq_app : forall Q Q' R R', trace_equiv Q Q' -> trace_equiv R R' -> trace_equiv (Q~~>R) (Q'~~>R')
 .
 Infix "≈" := (trace_equiv) (at level 62).
 Require Import Coq.Classes.SetoidClass.
@@ -266,18 +266,18 @@ Require Import TrieberStack.
 Definition push_op n (o o':option (ref{Node|any}[local_imm,local_imm])) (h h':heap) : Prop :=
   exists hd, exists hd', h'[hd']=(mkNode n hd) /\ o=hd /\ o'=(Some hd').
 CoFixpoint example_push_trace (q:ts) (n:nat) :=
-  (remote (deltaTS@q))~>
-  (local (clos_refl_trans _ eq))~>
-  (remote (deltaTS@q))~>
+  (remote (deltaTS@q))~~>
+  (local (clos_refl_trans _ eq))~~>
+  (remote (deltaTS@q))~~>
   (** TODO: allocation followed by more interference? on structure + new allocation? *)
-  (choice ((local (clos_refl_trans _ eq))~>(example_push_trace q n))
-          ((local ((push_op n)@q))~>ε))~>
-  (result tt)~>
+  (choice ((local (clos_refl_trans _ eq))~~>(example_push_trace q n))
+          ((local ((push_op n)@q))~~>ε))~~>
+  (result tt)~~>
   (remote (deltaTS@q)) (* TODO: and interfere on new allocation...? *)
 .
 
 Example push_spec (q:ts) n :=
-  (remote (deltaTS@q))~>(local ((push_op n)@q))~>(result tt)~>(remote (deltaTS@q))~>ε.
+  (remote (deltaTS@q))~~>(local ((push_op n)@q))~~>(result tt)~~>(remote (deltaTS@q))~~>ε.
 
 Axiom refine_choice : forall A (Q R S:@trace A), Q ≪ S -> R ≪ S -> (choice Q R) ≪ S.
 
@@ -311,24 +311,24 @@ Proof.
 Qed.
 
 Example read_ctr_spec (c:monotonic_counter) :=
-  (remote (increasing@c))~>
-  (ζ v => (local (observe (λ x h, x=v) c)~>(remote (increasing@c))~>(result v))).
+  (remote (increasing@c))~~>
+  (ζ v => (local (observe (λ x h, x=v) c)~~>(remote (increasing@c))~~>(result v))).
 
 Definition pop_op n x hd' (h h':heap) := exists (hd:ref{Node|any}[local_imm,local_imm]),
                                                   x=(Some hd) /\ (h[hd])=(mkNode n hd').
 Example pop_spec (q:ts)  :=
-  (remote (deltaTS@q))~>(ζ v => (local ((pop_op v)@q))~>(remote (deltaTS@q))~>(result v)).
+  (remote (deltaTS@q))~~>(ζ v => (local ((pop_op v)@q))~~>(remote (deltaTS@q))~~>(result v)).
 
 Axiom refine_bind_l : forall (A T:Set) (f:T->(@trace A)) Q, (forall t, (f t) ≪ Q) -> (bind f) ≪ Q.
 Axiom refine_bind_r : forall (A T:Set) (f:T->(@trace A)) Q, (forall t, Q ≪ (f t)) -> Q ≪ (bind f).
 Axiom refine_bind_b : forall (A T:Set) (f g:T->(@trace A)), (forall t, f t ≪ g t) -> bind f ≪ (bind g).
 
 CoFixpoint sample_pop_trace (q:ts) :=
-  (remote (deltaTS@q))~>
-  (local (clos_refl_trans _ eq))~>
-  (remote (deltaTS@q))~>
-  (choice ((local (clos_refl_trans _ eq))~>(sample_pop_trace q))
-          (ζ v => (local ((pop_op v)@q))~>(remote (deltaTS@q))~>result v)).
+  (remote (deltaTS@q))~~>
+  (local (clos_refl_trans _ eq))~~>
+  (remote (deltaTS@q))~~>
+  (choice ((local (clos_refl_trans _ eq))~~>(sample_pop_trace q))
+          (ζ v => (local ((pop_op v)@q))~~>(remote (deltaTS@q))~~>result v)).
 
 Example pop_test : forall q, sample_pop_trace q ≪ pop_spec q.
 Proof.
@@ -349,3 +349,70 @@ Proof.
 Qed.
 (* TODO: Should ζ / bind use existential instead of universal? *)
   
+Require Import RGref.DSL.Fields.
+Class HindsightField (A:Set){F:Set}`{FieldTyping A F} (f:F).
+(* Reachability, constrained to the hindsight field *)
+(* TODO: HindsightField should be declared once per type, and should define a member for the relevant field *)
+Inductive HindsightReach (T:Set)`{ImmediateReachability T}{P R G}{F:Set}
+                         (f:F)`{HindsightField T _ f}`{FieldType T _ f (ref{T|P}[R,G])} (h:heap) 
+    : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Prop :=
+| imm_hsr : forall r, HindsightReach T f h r r
+| step_hsr : forall x y z, HindsightReach T f h x y ->
+                           getF (h[y]) = z ->
+                           HindsightReach T f h x z
+.
+  
+
+(* TODO: Does this need to be coinductive for elim purposes?  Each observation will be finite... *)
+Inductive temporal_backbone {T P R G}{F:Set}{f:F}`{FieldType T F f (ref{T|P}[R,G])}`{HindsightField T _ f}
+                            : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Set :=
+  | init_backbone : forall a, temporal_backbone a a
+  | next_backbone : forall a b c, temporal_backbone a b ->
+                                  (* getF (h[b]) = c -> Don't think we need this since we really care about the interp... *)
+                                  temporal_backbone a c
+.
+Fixpoint interp_temporal_backbone {A:Set}
+                                  {T P R G}{F:Set}{f:F}`{FieldType T F f (ref{T|P}[R,G])}`{HindsightField T _ f}
+                                  {a b:ref{T|P}[R,G]} (bb:temporal_backbone a b) : @trace A :=
+  match bb with
+  | init_backbone a => ε
+                         (* TODO: interference! *)
+  | next_backbone a b c bb_ab => (interp_temporal_backbone bb_ab) ~~> (local (λ h h', h=h' /\ getF (h[b]) = c))
+  end.
+Notation "[| bb |]" := (interp_temporal_backbone bb) (at level 45).
+Notation "% a" := (init_backbone a) (at level 30).
+Notation "ab ↝ c" := (next_backbone _ _ c ab) (at level 36, left associativity).
+
+Variable r : ref{nat|any}[havoc,havoc].
+Variable x : ref{nat|any}[havoc,havoc].
+Variable y : ref{nat|any}[havoc,havoc].
+Check (%r ↝ x ↝ y).
+Eval compute in [| %r ↝ x ↝ y |].
+
+
+(* Then the Hindsight lemma should be along the lines of:
+Axiom hindsight : forall ...., [| %src↝...↝dst |]~~>(local (G_act@dst) ≪ (λ x x' h h', HindsightReach h x dst)@src)
+... *)
+
+
+(* TODO: Interference! *)
+Fixpoint temporal_backbone {T P R G}{A}{F:Set}{f:F}`{HindsightField T _ f}`{FieldType T F f (ref{T|P}[R,G])}
+                           (L:list ((ref{T|P}[R,G])*(ref{T|P}[R,G]))) : @trace A :=
+  match L with
+    | nil => ε
+    | cons (b,p) L'=> (local (observe (λ x h, getF x = p) b))~~>
+                             (@temporal_backbone T P R G A _ _ _ _ _ _ L')
+  end.
+
+Definition hand (A B:heap -> Prop) : heap -> Prop :=
+  λ h, A h /\ B h.
+
+Fixpoint current_backbone'  {T P R G}{F:Set}{f:F}`{HindsightField T _ f}`{FieldType T F f (ref{T|P}[R,G])}
+                           (L:list ((ref{T|P}[R,G])*(ref{T|P}[R,G]))) : heap -> Prop :=
+  match L with
+    | nil => (λ _, True)
+    | cons (b,p) L'=> hand (λ h, getF (h[b]) = p) (current_backbone' L')
+  end.
+Definition current_backbone {T P R G}{A}{F:Set}{f:F}`{HindsightField T _ f}`{FieldType T F f (ref{T|P}[R,G])}
+                            (L:list ((ref{T|P}[R,G])*(ref{T|P}[R,G]))) : @trace A :=
+  (local (λ h h', h = h' /\ current_backbone' L h)).
