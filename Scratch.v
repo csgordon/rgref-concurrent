@@ -408,6 +408,28 @@ type and this proof should be bundled up in the HindsightField instance...
 AND I need to ensure that this axiom actually reflects the results of the HS lemma.  If I need to generalize
 it slightly, that seems fine, but I need to ensure this is sound!
 *)
+Check @temporal_backbone.
+Axiom hindsight_maybe : forall A T P R G (F:Set) (f:F),
+                        forall (ir:ImmediateReachability T) (ft:FieldTyping T F) (ftt:FieldType T F f (ref{T|P}[R,G])) (hsf:@HindsightField T F ft f),
+                        forall (src dst:ref{T|P}[R,G]) (bb:@temporal_backbone T P R G F f ft ftt _ hsf src dst) G_act,
+    [| bb |]~~>(local (G_act@dst)) ≪ (local (A:=A) ((λ (x x':T) h h', HindsightReach T _ h src dst /\ G_act (h[dst]) (h'[dst]) h h')@src))
+.
+Check hindsight_maybe.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 (* TODO: Interference! *)
