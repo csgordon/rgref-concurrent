@@ -391,8 +391,17 @@ Eval compute in [| %r ↝ x ↝ y |].
 
 
 (* Then the Hindsight lemma should be along the lines of:
-Axiom hindsight : forall ...., [| %src↝...↝dst |]~~>(local (G_act@dst) ≪ (λ x x' h h', HindsightReach h x dst)@src)
-... *)
+Axiom hindsight : forall ....,
+    [| %src↝...↝dst |]~~>(local (G_act@dst) ≪ (λ x x' h h', HindsightReach h x dst)@src)
+or
+Axiom hindsight : forall ....,
+    [| %src↝...↝dst |]~~>(local (G_act@dst) ≪ (λ x x' h h', HindsightReach h x dst /\ G_act (h[dst]) (h'[dst]) h h')@src)
+Still need to deal with interference, and allocations that might happen between the backbone and action
+Also need more constraints on R (and G?) to enforce the relevant hindsight constraints... maybe the exact ref
+type and this proof should be bundled up in the HindsightField instance...
+AND I need to ensure that this axiom actually reflects the results of the HS lemma.  If I need to generalize
+it slightly, that seems fine, but I need to ensure this is sound!
+*)
 
 
 (* TODO: Interference! *)
