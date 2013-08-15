@@ -11,12 +11,12 @@ Notation "∞" := inf.
 Axiom ninf : ⊠.
 Notation "-∞" := ninf.
 Axiom ii_lt : ⊠ → ⊠ → Prop.
-Infix "≪" := ii_lt (at level 50).
+Infix "<<" := ii_lt (at level 50).
 Axiom ii_lt_b : ⊠ → ⊠ → bool.
 Infix "≪≪" := ii_lt_b (at level 50).
-Axiom ninf_lt_inf : -∞ ≪ ∞.
+Axiom ninf_lt_inf : -∞ << ∞.
 Axiom inf_eqb : ⊠ → ⊠ → bool.
-Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
+Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
   
    
   (*postulate
@@ -112,12 +112,12 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   | deltaE_insert : forall n tl tl' h h' n',
                       (* only insert unmarked nodes *)
                       h'[tl']=(mkE n' false (Some tl)) -> (* note final heap *)
-                      n ≪ n' ->
+                      n << n' ->
                       deltaE' (mkE n false (Some tl)) (mkE n false (Some tl')) h h' (* can assume Some b/c of sentinels *)
    (* δbn : if a backbone successor changes, it remains a backbone (unmarked) in the new heap
             (part 2 of 2: see insertion above) *)
   | deltaE_remove : forall n tl n' tl' h h',
-                      n ≪ n' -> (* should be easy to prove at writes, handy to have explicit for stability proof *)
+                      n << n' -> (* should be easy to prove at writes, handy to have explicit for stability proof *)
                       (* only remove marked nodes *)
                       h[tl] = (mkE n' true (Some tl')) -> (* note initial heap *)
                       deltaE'  (mkE n false (Some tl)) (mkE n false (Some tl')) h h'
@@ -126,7 +126,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
   | pf_invE : forall h n m tl,
                 (* φ_< : The key of every node is smaller than the key of its successor *)
                 (* φ_n : Every node other than the tail has a successor (implicit in tl's type + tl_invE) *)
-                (exists n', n ≪ n' /\ valOfE (h[tl])=n') ->
+                (exists n', n << n' /\ valOfE (h[tl])=n') ->
                 invE' (mkE n m (Some tl)) h.
   (* Let's try just baking equality in since we're equating elements of Prop anyways, rather than the iff used in other examples. *)
   Axiom inv : invE = invE'.
@@ -181,7 +181,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
                  clear Htmp. inversion Htmp'; subst.
                  (* tail node *) exists ∞. compute; rewrite E_rect_red. intuition.
                                  (* Issue connection h[tl'] and h'[tl']; with that connection, could prove
-                                    n ≪ n' ≪ ∞. *) admit.
+                                    n << n' << ∞. *) admit.
                  (* other node *)
                  exists n0; intuition; compute; try rewrite E_rect_red; auto.
                  (* The issue is that we don't presently have any explicit connection between h[tl'] and h'[tl'].
@@ -462,7 +462,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
               ) tt.
   Next Obligation. compute. intros; subst. reflexivity. Qed.
   Next Obligation.
-    fixdefs. red. intros. destruct H0. subst. constructor. (* TODO: plumb k ≪ ∞ *) admit. Qed.
+    fixdefs. red. intros. destruct H0. subst. constructor. (* TODO: plumb k << ∞ *) admit. Qed.
   Next Obligation. firstorder. Qed.
   Next Obligation. firstorder. Qed.
   Next Obligation. (* deltaE proof for the write *)
@@ -472,7 +472,7 @@ Axiom ii_lt_trans : forall x y z, x ≪ y -> y ≪ z -> x ≪ z.
     rewrite H2 in H4. rewrite H3 in H4. rewrite H4.
     unfold valOfE. unfold markedOfE. unfold nextOfE. repeat rewrite E_rect_red. 
     eapply deltaE_insert; rewrite H4; rewrite E_rect_red.
-    (* Now two pretty reasonable goals: preserving properties of h[s] in h', and ≪ check. *)
+    (* Now two pretty reasonable goals: preserving properties of h[s] in h', and << check. *)
   Admitted.    
 
 (*

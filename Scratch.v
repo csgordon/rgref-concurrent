@@ -360,7 +360,7 @@ Class HindsightField (A:Set){F:Set}`{FieldTyping A F} (f:F).
 (* Reachability, constrained to the hindsight field *)
 (* TODO: HindsightField should be declared once per type, and should define a member for the relevant field *)
 Inductive HindsightReach (T:Set)`{ImmediateReachability T}{P R G}{F:Set}
-                         (f:F)`{HindsightField T _ f}`{FieldType T _ f (ref{T|P}[R,G])} (h:heap) 
+                         (f:F)`{hsf:HindsightField T _ f}`{FieldType T _ f (ref{T|P}[R,G])} (h:heap) 
     : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Prop :=
 | imm_hsr : forall r, HindsightReach T f h r r
 | step_hsr : forall x y z, HindsightReach T f h x y ->
@@ -417,7 +417,71 @@ Axiom hindsight_maybe : forall A T P R G (F:Set) (f:F),
 Check hindsight_maybe.
 
 
+Section HindsightTesting.
 
+  Require Import Hindsight.
+  (* TODO: rewrite locate to use RGFix2 instead of RGFix with a tuple input *)
+  CoFixpoint locate_inner_loop (p c:eptr) (k:⊠) : @trace (eptr * eptr) :=
+    (remote (deltaE@p))~~>(remote (deltaE@c))~~>
+    (** Need conditional treatment... and conversion of ~> to direct heap access *)
+    (choice ( (local ((λ x x' h h', x=x'/\h=h'/\((getF x) ≪≪ k)=true)@c))~~>
+              (ζ nxt => (local ((λ x x' h h', x=x'/\h=h'/\(getF x)=Some nxt)@c))~~> (* TODO: interfere *)
+                        locate_inner_loop c nxt k))
+            ( (local ((λ x x' h h', x=x'/\h=h'/\ ((getF x) ≪≪ k)=false)@c))~~>
+              (result (p,c)))).
+  Program CoFixpoint locate_trace (l:hindsight_list) (k:⊠) : @trace (eptr * eptr) :=
+    (remote (local_imm@l))~~>
+    (ζ head => (local ((λ x x' h h', x=x' /\ h=h' /\ match x with mkHLB hd tl => hd = head end)@l))~~>
+               (remote (deltaE@head))~~>
+               (ζ nxt => (local ((λ x x' h h', x=x' /\ h=h' /\ nextOfE x = Some nxt)@head))~~>
+                         locate_inner_loop (@convert_P _ _ invE _ _ _ _ _ _ head) nxt k))
+    .
+  Next Obligation. eapply pred_and_proj1. eassumption. Defined.
+    
+  Instance e_hind : HindsightField E nxt.
+  (** TODO: not ideal; the hindsight proof approach is bleeding into the spec.  Maybe we need a
+      more general FieldReachable .... f to do this. *) 
+  Check @HindsightReach.
+  Example locate_spec (l:hindsight_list) (k:⊠) : @trace (eptr * eptr) :=
+    (remote (local_imm@l))~~>
+    (ζ head => (local ((λ x x' h h', x=x' /\ h=h' /\ match x with mkHLB hd tl => hd = head end)@l))~~>
+               (remote (deltaE@head))~~>
+               (ζ ret => match ret with
+                         | (p, c) =>
+                           (local ((λ x x' h h',
+                                    (*HindsightReach E nxt h (@convert_P _ _ invE _ _ _ _ _ _ head) p /\*)
+                                    (** TODO: This is actually broken; the Hindsight machinery assumes the
+                                        type of the HSF is the ref type, but here it's an option of the
+                                        ref type... *)
+                                    @HindsightReach E _ _ _ _ F nxt _ e_hind hs_node_fields _ h (@convert_P _ _ invE _ _ _ _ _ _ head) p /\
+                                    getF (h[p]) = Some c /\
+                                    getF (h[p]) ≪≪ k = true /\
+                                    getF (h[c]) ≪≪ k = false
+                                   )@(@convert_P _ _ invE _ _ _ _ _ _ head)))~~>
+                           (result (p,c))
+                         end))
+  . (* TODO: more interference... *)
+
+               
+  (** TODO: For refinements, a low-effort workaround in place of writing a trace computation is to
+      write a type class hierarchy for generating traces of various constructs, and instead of posing
+      refinements of f as:
+          ∀ ĩ, trace_of (f ĩ) ≪ f_spec ĩ
+      posing them as
+          ∀ ĩ, exists t, traces t (f ĩ) /\ t ≪ f_spec ĩ
+      (roughly).  Then with the type class instances arranged correctly, a simple tactic that matches
+          |- exists t, traces t (?f ?i) /\ t ≪ ?spec ?i
+      (possibly stamped out for various arities, and dealing with Γs, etc.) and just applies
+          eexists; split; repeat apply does_trace
+      (for does_trace as the trace typeclass member, or maybe even just eauto with typeclass_instances
+      depending on the typeclass details) could be pretty effective.
+  *)
+    
+
+
+
+
+End HindsightTesting.
 
 
 
