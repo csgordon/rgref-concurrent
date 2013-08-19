@@ -144,6 +144,12 @@ CoInductive trace_equiv {A:Set} : relation (@trace A) :=
   | teq_add_tail : forall Q, trace_equiv Q (Q~~>ε)
   | teq_drop_tail : forall Q, trace_equiv (Q~~>ε) Q
   | teq_app : forall Q Q' R R', trace_equiv Q Q' -> trace_equiv R R' -> trace_equiv (Q~~>R) (Q'~~>R')
+  | teq_lift_binder : forall Q (T:Set) (f:T->trace), trace_equiv (Q~~>(bind f)) (bind (λ x, Q~~>(f x)))
+  | teq_drop_binder : forall Q (T:Set) (f:T->trace), trace_equiv (bind (λ x, Q~~>(f x))) (Q~~>(bind f))
+  | teq_append_binder : forall Q (T:Set) (f:T->trace), trace_equiv ((bind f)~~>Q) (bind (λ x, (f x)~~>Q))
+  | teq_shrink_binder : forall Q (T:Set) (f:T->trace), trace_equiv (bind (λ x, (f x)~~>Q)) ((bind f)~~>Q)
+  | teq_bound : forall (T:Set) (f g:T->trace), (forall x, trace_equiv (f x) (g x)) -> trace_equiv (bind f) (bind g)
+  | teq_sym : forall Q R, trace_equiv Q R -> trace_equiv R Q
 .
 Infix "≈" := (trace_equiv) (at level 62).
 Require Import Coq.Classes.SetoidClass.
@@ -176,7 +182,10 @@ Proof.
       destruct H; try solve[constructor].
 
       constructor; eapply sym_trace_equiv; auto.
+      apply teq_bound. intros.  apply teq_sym. apply H. assumption.
 Qed.
+Instance trans_trace_equiv {A:Set} : Transitive (@trace_equiv A). Admitted.
+Instance refl_trace_equiv {A:Set} : Reflexive (@trace_equiv A). Admitted.
 
 Program Instance trace_setoid {A:Set} : Setoid (@trace A) :=
 { equiv := trace_equiv; setoid_equiv := _}.
@@ -472,6 +481,82 @@ Section HindsightTesting.
   Next Obligation. (** TODO: FieldType, need to adjust for fns of field type *) admit. Qed.
   Next Obligation. eapply pred_and_proj1; eassumption. Qed.
   Next Obligation. eapply pred_and_proj1; eassumption. Qed.
+
+  Section SuperHack.
+
+    
+    (** This is quite a hack; since k is fixed, there's a maximum number of iterations / pointer chases
+        from the head, as in the PODC wait-freedom proof, but this isn't necessarily a general technique.
+        Still, I need to make some forward progress on this proof... *)
+    Fixpoint locate_inner_loop_count n (p c:eptr) (k:⊠) : @trace (eptr * eptr) :=
+      (remote (deltaE@p))~~>(remote (deltaE@c))~~>
+      (** Need conditional treatment... and conversion of ~> to direct heap access *)
+      (match n with
+         | S n' => ( (local ((λ x x' h h', x=x'/\h=h'/\((getF x) ≪≪ k)=true)@c))~~>
+                     (ζ nxt => (local ((λ x x' h h', x=x'/\h=h'/\(getF x)=Some nxt)@c))~~> (* TODO: interfere *)
+                          locate_inner_loop_count n' c nxt k))
+         | O =>    ( (local ((λ x x' h h', x=x'/\h=h'/\ ((getF x) ≪≪ k)=false)@c))~~>(result (p,c)))
+       end).
+    Lemma search_refine : forall n k (X:FieldType E F f eptr) (p c p' c':eptr),
+                          exists (bb:@temporal_backbone _ _ _ _ F _ _ e_hind hs_node_fields _ c c'),
+        (** TODO: locate_inner_loop already includes a result... And need to think through calls more... *)
+        (locate_inner_loop_count n p c k)~~>(result (p',c')) ≪ [| bb |]~~>result (p',c').
+    Proof.
+      intros n k X. induction n; simpl.
+      intros; assert (p' = p /\ c' = c). admit. (** TODO Fix treatment of return... *) destruct H. subst c'; subst p'.
+          exists (init_backbone c). simpl.
+          (** TODO twiddle remote interference. Could drop local observation, but actually we're refining something
+              too weak to be useful in a larger proof; need the result to account for how k relates to heap contents *) admit.
+      (* inductive case *)
+      intros.
+      (** need to lift the variables bound inside the trace (which is itself inside an existential) into
+          the context... specifically nxt... *)
+      (** Going to just add axioms; ζ is essentially a new binder embedding anyways. First, need to rewrite under
+          the existential to get it to the point of commuting... *)
+      assert ((remote (deltaE @ p) ~~>
+    remote (deltaE @ c) ~~>
+    local
+      ((λ (x0 x' : E) (h h' : heap), x0 = x' ∧ h = h' ∧ valOfE x0 ≪≪ k = true) @
+       c) ~~>
+    (ζnxt =>
+    local
+      ((λ (x0 x' : E) (h h' : heap), x0 = x' ∧ h = h' ∧ nextOfE x0 = Some nxt) @
+       c) ~~> locate_inner_loop_count n c nxt k)) ~~> 
+   result (p', c')
+   ≈
+    (ζnxt =>
+   (remote (deltaE @ p) ~~>
+    remote (deltaE @ c) ~~>
+    local
+      ((λ (x0 x' : E) (h h' : heap), x0 = x' ∧ h = h' ∧ valOfE x0 ≪≪ k = true) @
+       c) ~~>
+    local
+      ((λ (x0 x' : E) (h h' : heap), x0 = x' ∧ h = h' ∧ nextOfE x0 = Some nxt) @
+       c) ~~> locate_inner_loop_count n c nxt k) ~~> 
+   result (p', c')) ).
+          etransitivity. apply teq_assoc2.
+          etransitivity. apply teq_app. reflexivity. apply teq_assoc2.
+          etransitivity. apply teq_app. reflexivity. apply teq_app. reflexivity.
+                         apply teq_app. apply teq_lift_binder. reflexivity. simpl.
+          etransitivity. apply teq_app. reflexivity. apply teq_app. reflexivity.
+                         apply teq_append_binder; reflexivity; simpl.
+          etransitivity. apply teq_app. reflexivity. apply teq_lift_binder.
+          etransitivity. apply teq_lift_binder.
+          apply teq_bound.
+          intros.
+          etransitivity. apply teq_assoc1.
+          etransitivity. apply teq_assoc1.
+          apply teq_app.
+          etransitivity. apply teq_assoc2.
+          apply teq_app. reflexivity.
+          apply teq_app. reflexivity.
+          apply teq_app. reflexivity. reflexivity.
+          reflexivity.
+      setoid_rewrite H. clear H.
+      cut (reorder : forall E T, exists (x:E), ...
+  End SuperHack.
+
+  
 
   Lemma search_refine : forall k (X:FieldType E F f eptr) (p c p' c':eptr),
                         exists (bb:@temporal_backbone _ _ _ _ F _ _ e_hind hs_node_fields _ c c'),
