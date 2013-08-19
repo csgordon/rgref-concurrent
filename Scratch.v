@@ -356,21 +356,28 @@ Qed.
 (* TODO: Should ζ / bind use existential instead of universal? *)
   
 Require Import RGref.DSL.Fields.
-Class HindsightField (A:Set){F:Set}`{FieldTyping A F} (f:F).
+Class HindsightField (A:Set){F:Set}`{ImmediateReachability A}`{FieldTyping A F} :=
+{
+  f : F
+  (* TODO: extend to a concrete P R G, impose proofs of
+     various hindsight properties on them, FieldType A f ref{...} *)
+}.
 (* Reachability, constrained to the hindsight field *)
-(* TODO: HindsightField should be declared once per type, and should define a member for the relevant field *)
-Inductive HindsightReach (T:Set)`{ImmediateReachability T}{P R G}{F:Set}
-                         (f:F)`{hsf:HindsightField T _ f}`{FieldType T _ f (ref{T|P}[R,G])} (h:heap) 
+Inductive FieldReach (T:Set)`{ImmediateReachability T}{P R G}{F:Set}
+                         (f:F)`{FieldType T _ f (ref{T|P}[R,G])} (h:heap) 
     : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Prop :=
-| imm_hsr : forall r, HindsightReach T f h r r
-| step_hsr : forall x y z, HindsightReach T f h x y ->
+| imm_hsr : forall r, FieldReach T f h r r
+| step_hsr : forall x y z, FieldReach T f h x y ->
                            getF (h[y]) = z ->
-                           HindsightReach T f h x z
+                           FieldReach T f h x z
 .
+Definition HindsightReach (T:Set){P R G}`{HindsightField T}`{FieldType T _ f (ref{T|P}[R,G])}
+                          (h:heap)(src dst:ref{T|P}[R,G]) : Prop :=
+  FieldReach T f h src dst.
   
 
 (* TODO: Does this need to be coinductive for elim purposes?  Each observation will be finite... *)
-Inductive temporal_backbone {T P R G}{F:Set}{f:F}`{FieldType T F f (ref{T|P}[R,G])}`{HindsightField T _ f}
+Inductive temporal_backbone {T P R G}{F:Set}`{hsf:HindsightField (F:=F) T}`{FieldType T F f (ref{T|P}[R,G])}
                             : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Set :=
   | init_backbone : forall a, temporal_backbone a a
   | next_backbone : forall a b c, temporal_backbone a b ->
@@ -378,7 +385,7 @@ Inductive temporal_backbone {T P R G}{F:Set}{f:F}`{FieldType T F f (ref{T|P}[R,G
                                   temporal_backbone a c
 .
 Fixpoint interp_temporal_backbone {A:Set}
-                                  {T P R G}{F:Set}{f:F}`{FieldType T F f (ref{T|P}[R,G])}`{HindsightField T _ f}
+                                  {T P R G}{F:Set}`{HindsightField (F:=F) T }`{FieldType T F f (ref{T|P}[R,G])}
                                   {a b:ref{T|P}[R,G]} (bb:temporal_backbone a b) : @trace A :=
   match bb with
   | init_backbone a => ε
@@ -409,10 +416,11 @@ AND I need to ensure that this axiom actually reflects the results of the HS lem
 it slightly, that seems fine, but I need to ensure this is sound!
 *)
 Check @temporal_backbone.
-Axiom hindsight_maybe : forall A T P R G (F:Set) (f:F),
-                        forall (ir:ImmediateReachability T) (ft:FieldTyping T F) (ftt:FieldType T F f (ref{T|P}[R,G])) (hsf:@HindsightField T F ft f),
-                        forall (src dst:ref{T|P}[R,G]) (bb:@temporal_backbone T P R G F f ft ftt _ hsf src dst) G_act,
-    [| bb |]~~>(local (G_act@dst)) ≪ (local (A:=A) ((λ (x x':T) h h', HindsightReach T _ h src dst /\ G_act (h[dst]) (h'[dst]) h h')@src))
+Axiom hindsight_maybe : forall A T P R G (F:Set),
+                        forall (ir:ImmediateReachability T) (ft:FieldTyping T F) 
+                               (hsf:@HindsightField T F ir ft) (ftt:FieldType T F f (ref{T|P}[R,G])),
+                        forall (src dst:ref{T|P}[R,G]) (bb:@temporal_backbone T P R G F ir ft hsf ft ftt src dst) G_act,
+    [| bb |]~~>(local (G_act@dst)) ≪ (local (A:=A) ((λ (x x':T) h h', HindsightReach T h src dst /\ G_act (h[dst]) (h'[dst]) h h')@src))
 .
 Check hindsight_maybe.
 
@@ -438,11 +446,11 @@ Section HindsightTesting.
     .
   Next Obligation. eapply pred_and_proj1. eassumption. Defined.
     
-  Instance e_hind : HindsightField E nxt.
+  Instance e_hind : HindsightField E := { f := nxt }.
   (** TODO: not ideal; the hindsight proof approach is bleeding into the spec.  Maybe we need a
       more general FieldReachable .... f to do this. *) 
   Check @HindsightReach.
-  Example locate_spec (l:hindsight_list) (k:⊠) : @trace (eptr * eptr) :=
+  Program Example locate_spec (l:hindsight_list) (k:⊠) : @trace (eptr * eptr) :=
     (remote (local_imm@l))~~>
     (ζ head => (local ((λ x x' h h', x=x' /\ h=h' /\ match x with mkHLB hd tl => hd = head end)@l))~~>
                (remote (deltaE@head))~~>
@@ -453,7 +461,7 @@ Section HindsightTesting.
                                     (** TODO: This is actually broken; the Hindsight machinery assumes the
                                         type of the HSF is the ref type, but here it's an option of the
                                         ref type... *)
-                                    @HindsightReach E _ _ _ _ F nxt _ e_hind hs_node_fields _ h (@convert_P _ _ invE _ _ _ _ _ _ head) p /\
+                                    @HindsightReach E _ _ _ F _ hs_node_fields e_hind hs_node_fields _ h (@convert_P _ _ invE _ _ _ _ _ _ head) p /\
                                     getF (h[p]) = Some c /\
                                     getF (h[p]) ≪≪ k = true /\
                                     getF (h[c]) ≪≪ k = false
@@ -461,6 +469,29 @@ Section HindsightTesting.
                            (result (p,c))
                          end))
   . (* TODO: more interference... *)
+  Next Obligation. (** TODO: FieldType, need to adjust for fns of field type *) admit. Qed.
+  Next Obligation. eapply pred_and_proj1; eassumption. Qed.
+  Next Obligation. eapply pred_and_proj1; eassumption. Qed.
+
+  Lemma search_refine : forall k (X:FieldType E F f eptr) (p c p' c':eptr),
+                        exists (bb:@temporal_backbone _ _ _ _ F _ _ e_hind hs_node_fields _ c c'),
+      (** TODO: locate_inner_loop already includes a result... And need to think through calls more... *)
+      (locate_inner_loop p c k)~~>(result (p',c')) ≪ [| bb |]~~>result (p',c').
+  Proof.
+    intros k X.
+    intros p c. induction (locate_inner_loop p c k).
+    cofix.
+    setoid_rewrite (trace_dup_eq _ (locate_inner_loop _ _ _)). compute[locate_inner_loop trace_dup]. fold locate_inner_loop.
+    intros.
+    rewrite 
+
+  Lemma hindsight_test : forall l k, locate_trace l k ≪ locate_spec l k.
+  Proof.
+    intros.
+
+
+
+
 
                
   (** TODO: For refinements, a low-effort workaround in place of writing a trace computation is to
