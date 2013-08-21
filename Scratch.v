@@ -553,7 +553,19 @@ Section HindsightTesting.
           apply teq_app. reflexivity. reflexivity.
           reflexivity.
       setoid_rewrite H. clear H.
-      cut (reorder : forall E T, exists (x:E), ...
+      (** Is this posited axiom sound?  I'm saying the refinement works if there exists a single observation for which
+          the refinement goes through, which might do something degenerate like assume if it works for a terminal
+          value in a monotonic range then it works for the whole range.... I'm pretty sure this isn't sound.
+          But I still don't want the exists to change to a forall, since that goal might be infeasible (e.g. if x is
+          observed to equal 3, clearly it only works for x:=3...
+      *)
+      assert (reorder : forall (t E:Set) (T:@trace t) (f:E -> trace), (exists (x:E), f x ≪ T) -> (bind f) ≪ T). admit.
+      setoid_rewrite reorder.
+
+
+
+
+      
   End SuperHack.
 
   
