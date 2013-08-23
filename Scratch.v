@@ -111,6 +111,7 @@ CoInductive refines {A:Set} : relation (@trace A) :=
   | refine_local : forall a a' R, inclusion _ a a' -> refines ((local a)~~>R) ((local a')~~>R)
   | refine_left : forall Q Q' R, refines Q Q' -> refines (Q~~>R) (Q'~~>R)
   | refine_right : forall Q R R', refines R R' -> refines (Q~~>R) (Q~~>R')
+  | refine_split : forall Q Q' R R', refines Q Q' -> refines R R' -> refines (Q~~>R) (Q'~~>R')
   (* Ideally associativity would simply be an equivalence in a HIT... Not sure what the status
      of HITs for coinduction is.
    *)
@@ -564,6 +565,10 @@ Section HindsightTesting.
       unfold interp_temporal_backbone; fold (@interp_temporal_backbone (eptr * eptr)).
       compute [getF].
       (** Now it looks like we're on track... if my proposed hoist axiom is sound...*)
+      rewrite (teq_assoc2 _ ([| bb' |])).
+      etransitivity. repeat rewrite teq_assoc2. reflexivity.
+      etransitivity. rewrite teq_assoc1. rewrite teq_assoc1. rewrite teq_assoc1. reflexivity.
+      apply refine_split; eauto.
 
 
 
