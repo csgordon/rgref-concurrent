@@ -402,7 +402,7 @@ Fixpoint interp_temporal_backbone {A:Set}
   | init_backbone a => ε
                          (* TODO: interference! *)
   | next_backbone a b c bb_ab => (interp_temporal_backbone bb_ab) ~~> (local (λ h h', h=h' /\ getF (h[b]) = c))
-  | prfx_backbone a b c bb_bc => (local (λ h h', h=h' /\ getF (h[b]) = c))~~>(interp_temporal_backbone bb_bc)
+  | prfx_backbone a b c bb_bc => (local (λ h h', h=h' /\ getF (h[a]) = b))~~>(interp_temporal_backbone bb_bc)
   end.
 Notation "[| bb |]" := (interp_temporal_backbone bb) (at level 45).
 Notation "% a" := (init_backbone a) (at level 30).
