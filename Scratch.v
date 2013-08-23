@@ -392,6 +392,7 @@ Inductive temporal_backbone {T P R G}{F:Set}`{hsf:HindsightField (F:=F) T}`{Fiel
   | next_backbone : forall a b c, temporal_backbone a b ->
                                   (* getF (h[b]) = c -> Don't think we need this since we really care about the interp... *)
                                   temporal_backbone a c
+  | prfx_backbone : forall a b c, temporal_backbone b c -> temporal_backbone a c
 .
 Fixpoint interp_temporal_backbone {A:Set}
                                   {T P R G}{F:Set}`{HindsightField (F:=F) T }`{FieldType T F f (ref{T|P}[R,G])}
@@ -400,6 +401,7 @@ Fixpoint interp_temporal_backbone {A:Set}
   | init_backbone a => ε
                          (* TODO: interference! *)
   | next_backbone a b c bb_ab => (interp_temporal_backbone bb_ab) ~~> (local (λ h h', h=h' /\ getF (h[b]) = c))
+  | prfx_backbone a b c bb_bc => (local (λ h h', h=h' /\ getF (h[b]) = c))~~>(interp_temporal_backbone bb_bc)
   end.
 Notation "[| bb |]" := (interp_temporal_backbone bb) (at level 45).
 Notation "% a" := (init_backbone a) (at level 30).
@@ -553,6 +555,19 @@ Section HindsightTesting.
           apply teq_app. reflexivity. reflexivity.
           reflexivity.
       setoid_rewrite H. clear H.
+      (** Let's try an axiom to lift a binder out of a trace in an arbitrary context... *)
+      assert (hoist : forall {Q T : Set}{f:Q->@trace T}{C : @trace T -> Prop},
+                        (forall q, C (f q)) -> C (bind f)). admit.
+      eapply hoist. intros.
+      destruct (IHn c q p' c') as [bb' ref'].
+      exists (prfx_backbone _ _ _ bb').
+      unfold interp_temporal_backbone; fold (@interp_temporal_backbone (eptr * eptr)).
+      compute [getF].
+      (** Now it looks like we're on track... if my proposed hoist axiom is sound...*)
+
+
+
+      
       (** Is this posited axiom sound?  I'm saying the refinement works if there exists a single observation for which
           the refinement goes through, which might do something degenerate like assume if it works for a terminal
           value in a monotonic range then it works for the whole range.... I'm pretty sure this isn't sound.
