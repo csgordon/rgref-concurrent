@@ -200,7 +200,9 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
                            end _) (!sent)
     end) q.
 Next Obligation. (** δmsq guarantee proof *)
-  apply msq_dequeue with (n := x). subst hd0. (** TODO: Follows from appropriate !x=h[x] assumption... *) admit.
+  apply msq_dequeue with (n := x). subst hd0.
+  assert (@deref Node _ _ _ _ _  delta_refl eq_refl sent = fold (R := deltaNode) (G := deltaNode) (h[sent])) by admit.
+  simpl in H1. rewrite <- H1. assumption.
 Qed.
 Next Obligation. (** TODO: This is a hack for a match+refine... Need to fix up induction principle for this to work right. *) admit.
 Qed.
