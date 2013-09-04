@@ -149,6 +149,24 @@ Local Instance meta_fold {A:Set} : rel_fold A :=
 End HideMetaFold.
 Notation "{{{ e }}}" := (let mfold : forall A, rel_fold A := @meta_fold in e) (at level 50).
 
+(** *** New Folding
+    The existing rel_fold infrastructure is brittle and painful.  Folding an arbitrary relation isn't even possible
+    in some cases, since constructor arguments that aren't typed by a parameter don't fold right.
+    So let's try a new approach, which explicitly makes a reference at a certain type readable
+    at a certain type.  This way we can treat special cases like identity reads soundly.
+
+    In the future, it will also be easier to extend this to enforce checking soundness of folds.
+*)
+Class readable_at (T : Set) (R G : hrel T) :=
+  { res : Set ;
+    dofold : T -> res
+  }.
+(** We can always build a new fold from an old one *)
+Instance legacy_fold {A:Set}{R G:hrel A}`{rel_fold A} : readable_at A R G :=
+  { res := rgfold R G ;
+    dofold := fold 
+  }.
+
 (** ** Containment 
     Containment means a reference's rely admits at least as much interference
     on references reachable from it as those reachable references themselves. *)
@@ -168,7 +186,7 @@ cbv iota delta beta
 >>
 But that reduction is stronger than default conversion (at least in 8.3... still building 8.4).
 *)
-Axiom deref : forall {A:Set}{B:Set}`{rel_fold A}{P:hpred A}{R G:hrel A}, hreflexive G -> rgfold R G = B -> ref A P R G -> B.
+Axiom deref : forall {A:Set}{B:Set}{P:hpred A}{R G:hrel A}`{readable_at A R G}, hreflexive G -> res = B -> ref A P R G -> B.
 (*Axiom deref : forall {A:Set}{P:hpred A}{R G:hrel A}, ref A P R G -> A.*)
 Notation "! e" := (deref _ _ e) (at level 30). (* with reflexivity, add an _ in there *)
 
@@ -179,8 +197,8 @@ Notation "! e" := (deref _ _ e) (at level 30). (* with reflexivity, add an _ in 
    relationship between results of the fold members of the instances when applied to the
    same value.  This version is really only useful for equating identity folds with
    the identity meta_fold instance results. *)
-Axiom deref_conversion : forall (A B:Set)(f f':rel_fold A) P R G  rf1 rf2 fe1 fe2,
-                         @deref A B f P R G rf1 fe1 = @deref A B f' P R G rf2 fe2.
+Axiom deref_conversion : forall (A B:Set) P R G RA1 RA2 rf1 rf2 fe1 fe2,
+                         @deref A B P R G RA1 rf1 fe1 = @deref A B P R G RA2 rf2 fe2.
 
 Axiom ptr_eq_deref : forall A P P' R R' G G' h (p:ref{A|P}[R,G]) (r:ref{A|P'}[G',R']), p≡r -> h[p]=h[r].
 Hint Resolve ptr_eq_deref.
@@ -329,13 +347,13 @@ Lemma conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReac
 Proof. intros. unfold convert_P. symmetry. eapply convert_equiv.
 Qed.
 
-Axiom refine_ref : forall {A:Set}{P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
+Axiom refine_ref : forall {A:Set}{P P' R G}{fld : readable_at A R G}{rfl : hreflexive G}
                    (r : ref{A|P}[R,G])
-                   (x : rgfold R G),
+                   (x : res),
                    stable P' R ->
-                   ((@deref _ _ fld _ _ _ rfl (eq_refl) r) = x) -> (* <-- This is only available in special match statements, and flow is restricted! *)
-                   (forall h, (fold (h[r]))=(deref rfl (eq_refl) r) -> (deref rfl eq_refl r) = x -> P (h[r]) h -> P' (h[r]) h) ->
+                   ((@deref _ _ _ _ _ fld rfl (eq_refl) r) = x) -> (* <-- This is only available in special match statements, and flow is restricted! *)
+                   (forall h, (dofold (h[r]))=(deref rfl (eq_refl) r) -> (deref rfl eq_refl r) = x -> P (h[r]) h -> P' (h[r]) h) ->
                    ref{A|P'}[R,G].
-Axiom refinement_equiv : forall {A P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
+Axiom refinement_equiv : forall {A P P' R G}{fld : readable_at A R G}{rfl : hreflexive G}
                                 (r:ref{A|P}[R,G]) x stab pf refpf,
                                 forall h, h[r] = h[@refine_ref A P P' R G fld rfl r x stab pf refpf].

@@ -29,16 +29,16 @@ Program Definition BAD_alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
                                         end)
                         end))) l.
 Next Obligation. 
-  erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
+  erewrite deref_conversion in *.
   rewrite <- Heq_anonymous.
   constructor. 
-  Grab Existential Variables. eauto. eauto.
+  Grab Existential Variables. eauto. eauto. eauto. eauto.
 Qed.  
 Next Obligation. 
-  erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
+  erewrite deref_conversion in *.
   rewrite <- Heq_anonymous.
   constructor. 
-  Grab Existential Variables. eauto. eauto.
+  Grab Existential Variables. eauto. eauto. eauto. eauto.
 Qed.  
 
 (** The specific issue with this example is that using a match inside a Program Definition

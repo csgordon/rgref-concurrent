@@ -51,10 +51,8 @@ Program Definition alist_append {Γ}(n:nat)(l:alist) : rgref Γ unit Γ :=
                                         end)
                         end _))) l.
 Next Obligation.
-  erewrite deref_conversion with (f' := @meta_fold (option appList)) in *.
-  rewrite H.
-  constructor. 
-  Grab Existential Variables. eauto. eauto.
+  erewrite deref_conversion in *. rewrite H. constructor.
+  Grab Existential Variables. eauto. eauto. eauto. eauto.
 Qed. 
 
 Program Example test1 {Γ} : rgref Γ unit Γ :=
