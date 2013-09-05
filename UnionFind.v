@@ -133,8 +133,36 @@ Proof.
   constructor. compute. eexists; reflexivity.
 Qed.
 (** TODO *)
+Lemma precise_root : forall n i j, precise_pred (fun x h => root n x h i j).
+Proof.
+  intros. red. intros.
+  induction H. constructor. rewrite H0 in H. auto.
+      repeat constructor. repeat red. exists i. repeat red. reflexivity.
+      eapply trans_root. apply IHroot. rewrite <- H0. auto.
+      repeat constructor. repeat red. exists i. repeat red. reflexivity.
+Qed.
 Lemma precise_δ : forall n, precise_rel (δ n).
-Admitted.
+  intros. red. intros.
+  induction H1.
+    assert (H' := precise_root). red in H'.
+    eapply path_compression. eapply H'. apply H1. firstorder.
+    eapply H'.
+    Axiom immutable_fields : 
+      forall T F H f FT FTT P (r:ref{T|P}[local_imm,local_imm]) h h',
+        @getF T F H f FT FTT (h[r]) = @getF T F H f FT FTT (h'[r]).
+    rewrite immutable_fields with (h' := h).
+    apply H2.
+    firstorder.
+
+    Axiom immutable_vals :
+      forall T P h h' (r:ref{T|P}[local_imm,local_imm]), h[r]=h'[r].
+    rewrite H in H2. rewrite (immutable_vals _ _ h h2) in H3. rewrite H in H4.
+    eapply path_union. eapply precise_root. eassumption. firstorder.
+      eassumption. eassumption. eassumption. assumption.
+    constructor. repeat red. exists y. compute; reflexivity.
+    constructor. repeat red. exists x. compute; reflexivity.
+Qed.
+    
 Hint Resolve precise_φ precise_δ.
 Lemma refl_δ : forall n, hreflexive (δ n).
 Proof.
@@ -196,7 +224,7 @@ Proof.
   f_equal. eapply rgref_exchange; try solve [compute; eauto].
   split; red; intros.
       destruct H; auto.
-      split; auto. intros. inversion H; subst.
+      split; auto. intros. inversion H; subst a'; subst a.
       (* Need to destruct an application of ascent_root... *)
       eapply path_compression; try  rewrite array_id_update.
 Admitted.
@@ -275,7 +303,9 @@ Next Obligation.
           intros. rewrite <- field_projection_commutes' with (h := h) (f := parent).
                   rewrite <- field_projection_commutes' with (h := h) (f := x).
                   apply H4.
-                  (* Can't induct / destruct / invert on zz *) admit. admit.
+                  (* Can't induct / destruct / invert on zz,
+                     Can't really finish this until uf_folding is no longer
+                      admitted... since we can't reduce eq_rec unless it's eq_refl... *) admit. admit.
       rewrite H5. rewrite H5. apply self_root. assumption.
 
       subst r0.
