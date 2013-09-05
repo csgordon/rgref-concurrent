@@ -1,5 +1,4 @@
 Require Import RGref.DSL.Core.
-Require Import RGref.DSL.Monad.
 
 (** * Helpful Constants, Lemmas, and Proof Tactics *)
 (** ** General stufff *)
@@ -31,6 +30,7 @@ Proof. compute; eauto. Qed.
 Hint Resolve havoc_refl.
 
 Definition empty {A:Set} : hrel A := fun _ => fun _ => fun _ => fun _ => False.
+Definition locally_const {A:Set} (R:hrel A) := forall a a' h h', R a a' h h' -> a=a'.
 
 Lemma stable_empty : forall (A:Set) (P:hpred A), stable P empty.
 Proof.

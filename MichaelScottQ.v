@@ -10,6 +10,7 @@ Axiom deltaNode : hrel Node.
 Axiom mkNode : nat -> option (ref{Node|validNode}[deltaNode,deltaNode]) -> Node.
 Axiom Node_rect : forall (P:Node->Type), (forall n o, P (mkNode n o)) -> forall nd, P nd. 
 Definition Node_rec {T:Set} := Node_rect (fun _ => T).
+Definition Node_ind (T:Node->Prop) := Node_rect T.
 Inductive validNode' : hpred Node :=
   | nil_next : forall n h, validNode' (mkNode n None) h
   | nil_reach : forall n h tl, validNode' (h[tl]) h ->
@@ -31,6 +32,15 @@ Axiom delta_eq : deltaNode ⊆⊇ deltaNode'.
 Axiom destruct_node : forall nd, exists n, exists tl, nd = mkNode n tl. (* destruction principle *)
 Axiom compute_node_rect : forall T B x tl, Node_rect T B (mkNode x tl) = B x tl. (* fake computation *)
 
+(* TODO: Figure out how to justify this with general principles.  It's sound here b/c we know
+   it's acyclic, but there should be an underlying general principle... Could just say it's true for
+   any recursive option member, for any T, works for [option ref{T...}]... No, that doesn't
+   prohibit cycles in the heap... This is actually reliant on a well-founded reachability
+   through the heap, which we know is true in this case.  *)
+Axiom Node_heap_rect : forall h (P:Node->Type), (forall n, P (mkNode n None)) ->
+                                                     (forall n r, P (h[r]) -> P (mkNode n (Some r))) ->
+                                                     forall n, P n.
+                                                   
 
 (** ** General properties of node definitions *)
 Inductive msq_reach : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (a:Node), Prop :=
@@ -98,7 +108,7 @@ Inductive msq_contains : hrel MSQ -> Prop :=
               msq_contains RR.
 Instance msq_containment : Containment MSQ := { contains := msq_contains }.
 Instance nd_fold : rel_fold Node.
-  (** TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
+  (** TODO: Again, need a workaround for the ind-ind hack + constructor typing args. This defines the identity fold. *)
 Print rel_fold.
   eapply Build_rel_fold. intros. exact H.
 Defined.
@@ -113,7 +123,8 @@ Lemma precise_valid_node : precise_pred validNode'.
   eapply IHvalidNode'. intros.
   Require Import Coq.Program.Equality.
   dependent induction H1.
-    (** This case is a messy contradiction, induction tried to use the reflexively reachable case for things w/ wrong types *) admit.
+    (** Messy contradiction; dep. induction tried to use the reflexive reachability for things w/ wrong types *)
+    assert (ref{T|P'}[R',G'] = Node -> False). admit. exfalso. firstorder.
     eapply H0. eapply trans_reachable with (i := tl). constructor. eapply directly_reachable. assumption.
     eapply H0. clear IHreachable_from_in. eapply trans_reachable with (i := tl). constructor. eapply trans_reachable with (i := i); eauto.
 Qed.
@@ -145,9 +156,9 @@ Proof. compute. assert (Htmp := delta_eq). destruct Htmp. compute in *.
 Qed.
 Hint Resolve precise_valid_node2 precise_delta_node2.
 Lemma delta_refl : hreflexive deltaNode.
-Proof. compute. intros. destruct delta_eq. apply H0.
-       (** TODO: This may actually be false at the moment; need to fix this *)
-Admitted.
+Proof. compute. intros. destruct delta_eq. apply H0. clear H; clear H0.
+       eapply (Node_heap_rect h (fun x => deltaNode' x x h h)); constructor; auto.
+Qed.
 Hint Resolve delta_refl.
 
 Lemma precise_δmsq : precise_rel δmsq.
@@ -168,11 +179,13 @@ Proof. red. intros. destruct (validity x' h'). destruct delta_eq; compute in *.
 Qed.
 Hint Resolve stability.
 
+(** *** Allocation *)
 Program Definition alloc_msq {Γ} (_:unit) : rgref Γ msq Γ :=
   sentinel <- Alloc (mkNode 0 None);
   Alloc (mkMSQ sentinel).
 Next Obligation. destruct (validity (mkNode 0 None) h). apply H1; constructor. Qed.
 
+(** *** Dequeue operation *)
 Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec q =>
     match !q with
@@ -187,9 +200,11 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
                            end _) (!sent)
     end) q.
 Next Obligation. (** δmsq guarantee proof *)
-  apply msq_dequeue with (n := x). (** TODO: Follows from appropriate !x=h[x] assumption... *) admit.
+  apply msq_dequeue with (n := x). subst hd0.
+  assert (@deref Node _ _ _ _ _  delta_refl eq_refl sent = fold (R := deltaNode) (G := deltaNode) (h[sent])) by admit.
+  simpl in H1. rewrite <- H1. assumption.
 Qed.
-Next Obligation. subst. (** TODO: Need to fix up induction principle for this to work right. *) admit.
+Next Obligation. (** TODO: This is a hack for a match+refine... Need to fix up induction principle for this to work right. *) admit.
 Qed.
 (** TODO: PROBLEM: folding the δmsq restriction through the list when finding the tail to enqueue means δmsq must account for enqueues.
    Currently it doesn't. *)
@@ -222,7 +237,7 @@ Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
                      a refinement of the r:ref{A|P}[R,G] with refinement P' such that
                      P∧<CAS failed>⇒ P' and stable P' R. *)
                   (*success <- fCAS( best_tl → next , None, Some _ ) ;*)
-                  success <- share_field_CAS( best_tl → next , None, (fun tl => Some tl) , VZero , TFirst VZero _ _) ;
+                  success <- share_field_CAS'( best_tl → next , None, (fun tl => Some tl) , VZero , TFirst VZero _ _ , best_tl) ;
                   (* If the CAS failed, next is not None, but there isn't a great way to extract the Some arg *)
                   if success then rgret tt else loop (best_tl ~> next)
                )
@@ -230,27 +245,18 @@ Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
 Next Obligation. intros; subst. destruct H0. subst. destruct (validity (mkNode n None) h). apply H2. constructor. Qed.
 Next Obligation. intros; exfalso; assumption. Qed.
 Next Obligation. (* deltaNode *)
-  intros. destruct delta_eq. apply H4.
+  intros. destruct delta_eq. apply H5.
   destruct (destruct_node v) as [n' [tl' H']]. rewrite H' in *. clear H'.
   simpl in H1. compute in H1.
   rewrite compute_node_rect in *.
   subst tl'.
   destruct H2.
   eapply node_append.
-  (** TODO: Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl)... 
-     Could add some assumptions to share_field_CAS guarantee obligation that transfer 
-     non-pointer-equivalence based on incompatible rely/guarantee to the result, e.g.:
-         ∀ P R G (x:ref{aT|P}[R,G]), ¬(G⊆aR)∨¬(aG⊆R) → ¬(s≡x)
-     since if a reference could not have aliased the linear value, it cannot alias the (equivalent)
-     weakened conversion result.
-  *)
-  assert (forall P R G (x:ref{Node|P}[R,G]), not (G⊆empty) \/ (not (havoc⊆R)) -> not (s≡x)) by admit.
-  assert (~ (s ≡ best_tl)). apply H5. left. compute. intros. apply (H6 (mkNode 3 None) (mkNode 3 None) h h). 
-  apply H4. constructor.
+  (**  Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl). *)
+  assert (~ (s ≡ best_tl)). apply H3. left. compute. intros. apply (H6 (mkNode 3 None) (mkNode 3 None) h h). 
+  apply H5. constructor.
   rewrite non_ptr_eq_based_nonaliasing; eauto.
 Qed.  
 Next Obligation. (* a Set.... probably from field read folding... *) 
   exact (rgfold deltaNode deltaNode). Defined.
 
-(** *** Dequeue operation *)
-(** TODO ? *)

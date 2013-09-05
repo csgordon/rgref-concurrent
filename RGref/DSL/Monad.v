@@ -1,4 +1,5 @@
 Require Import RGref.DSL.Core.
+Require Export RGref.DSL.Theories.
 Require Export RGref.DSL.LinearEnv.
 
 (** * A Monad for RGref programs *)
@@ -65,6 +66,14 @@ Axiom dropvar : forall {Δ} (v:var) (t:Set) (tm:tymember v t Δ), rgref Δ unit 
                    G (!l) e h (heap_write l e h)}
                  {pres:(forall h (l:ref{A|P}[R,G]), P (!l) h -> P e (heap_write l e h))}
                  , rgref Δ unit Δ.*)
+Program Axiom store : forall {Δ:tyenv}{A:Set}{P R G}`{readable_at A R G}`{res=A}`{hreflexive G}
+                             (x:ref{A|P}[R,G])(e:A)
+                             (guar:(forall h, P (!x) h -> G (!x) e h (heap_write x e h)))
+                             (pres:(forall h, P (!x) h -> P e (heap_write x e h))),
+                                      rgref Δ unit Δ.
+Notation "[ x ]:= e" := (@store _ _ _ _ _ _ _ _ x e _ _) (at level 70).
+                                    
+
 Program Axiom write' : forall {Δ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:A)
                       (meta_x_deref:A) (meta_e_fold:A) 
                       (** These meta args are notationally expanded x and e using the identity relation folding *)
@@ -73,7 +82,7 @@ Program Axiom write' : forall {Δ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive 
                  (** temporarily not using meta_e_fold... the cases where I needed the "nop" behavior are once where the types are actually equal *)
                  {pres:(forall h, P meta_x_deref h -> P meta_e_fold (heap_write x meta_e_fold h))}
                  , rgref Δ unit Δ.
-Notation "[ x ]:= e" := (@write' _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at level 70).
+(** Notation "[ x ]:= e" := (@write' _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at level 70).*)
 (** TODO: heap writes that update the predicate.  Because of the monadic style, we'll actually
    need a new axiom and syntax support for this, to rebind the variable at the strengthened type *)
 
@@ -116,9 +125,6 @@ Program Axiom write_imp_exp : forall {Δ Δ'}{A:Set}`{rel_fold A}{P R G}`{hrefle
                               {pres:(forall h env, P (valueOf env h meta_x_deref) h -> P (valueOf env h meta_e_fold) (heap_write x (valueOf env h meta_e_fold) h))}
                               , rgref Δ unit Δ'.
 Notation "[[ x ]]:= e" := (@write_imp_exp _ _ _ _ _ _ _ _ x e ({{{read_imp x}}}) ({{{e}}}) _ _) (at level 70).
-
-Definition locally_const {A:Set} (R:hrel A) := forall a a' h h', R a a' h h' -> a=a'.
-
 
 Axiom alloc : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T), 
                 stable P R ->        (* predicate is stable *)

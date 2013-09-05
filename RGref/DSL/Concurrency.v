@@ -49,6 +49,30 @@ Notation "share_field_CAS( r → f , e , e' , v , mem )" :=
     (@field_cas_share _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ v mem _ _ _ _ _ r f _ _ e e' _)
     (at level 65).
 
+
+Axiom field_cas_share' : forall {Γ T P R G F FT} `{FieldTyping T F}
+                               {aT aP aR aG aP' aR' aG'}
+                               (v:var)
+                                (mem:tymember v (ref{aT|aP}[aR,aG]) Γ),
+                                aP⊑aP' -> (* refinement weakening *)
+                                aG'⊆aG -> (* permission weakening *)
+                                aR⊆aR' -> (* interference weakening *)
+                                aG'⊆aR' -> (* self-splitting *)
+                                stable aP' aR' ->
+                                forall xP xR xG (l:ref{aT|xP}[xR,xG]),
+                              forall
+                              (r : ref{T|P}[R,G]) (f:F) `{FieldType T F f FT}
+                              (fv0 : FT) (fv' : ref{aT|aP'}[aR',aG'] -> FT),
+                              (forall h v s, h[r]=v -> getF v = fv0 ->
+                                             aP (h[s]) h ->
+                                             (not (xG ⊆ aR) \/ (not (aG ⊆ xR)) -> not (s ≡ l)) ->
+                                             G v (setF v (fv' s)) h (heap_write r (setF v (fv' s)) h)) ->
+                              rgref Γ bool (tyrem mem).
+Notation "share_field_CAS'( r → f , e , e' , v , mem , l )" := 
+    (@field_cas_share' _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ v mem _ _ _ _ _ _ _ _ l r f _ _ e e' _)
+    (at level 65).
+
+
 (* Conversion / sharing DCAS, for two adjacent fields *)
 (* Seems necessary for the Hindsight implementation *)
 Axiom dcas_share : forall {Γ T P R G F FTf FTg} `{FieldTyping T F}
