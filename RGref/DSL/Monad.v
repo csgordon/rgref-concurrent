@@ -60,12 +60,6 @@ Axiom dropvar : forall {Δ} (v:var) (t:Set) (tm:tymember v t Δ), rgref Δ unit 
     and obligation statements.
 *)
 (** TODO: Fix store to work properly with the linear environment. *)
-(*Axiom store : forall {Δ:dyn_env}{A:Set}{P R G}(x:var)(e:A)
-                 {varty:exists ptr, lookup x Δ = Some (existT (fun x:Set=>x) (ref{A|P}[R,G]) ptr)}
-                 {guar:forall h l, lookup x Δ = Some (existT (fun x:Set=>x) (ref{A|P}[R,G]) l) ->
-                   G (!l) e h (heap_write l e h)}
-                 {pres:(forall h (l:ref{A|P}[R,G]), P (!l) h -> P e (heap_write l e h))}
-                 , rgref Δ unit Δ.*)
 Program Axiom store : forall {Δ:tyenv}{A:Set}{P R G}`{readable_at A R G}`{res=A}`{hreflexive G}
                              (x:ref{A|P}[R,G])(e:A)
                              (guar:(forall h, P (!x) h -> G (!x) e h (heap_write x e h)))
@@ -74,14 +68,14 @@ Program Axiom store : forall {Δ:tyenv}{A:Set}{P R G}`{readable_at A R G}`{res=A
 Notation "[ x ]:= e" := (@store _ _ _ _ _ _ _ _ x e _ _) (at level 70).
                                     
 
-Program Axiom write' : forall {Δ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:A)
+(*Program Axiom write' : forall {Δ:tyenv}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:A)
                       (meta_x_deref:A) (meta_e_fold:A) 
                       (** These meta args are notationally expanded x and e using the identity relation folding *)
                  (*{guar:forall h, G (!x) e h (heap_write x e h)} *)
                  {guar:forall h, (forall A (fa:rel_fold A), fa = meta_fold) -> G (meta_x_deref) e h (heap_write x e h)}
                  (** temporarily not using meta_e_fold... the cases where I needed the "nop" behavior are once where the types are actually equal *)
                  {pres:(forall h, P meta_x_deref h -> P meta_e_fold (heap_write x meta_e_fold h))}
-                 , rgref Δ unit Δ.
+                 , rgref Δ unit Δ.*)
 (** Notation "[ x ]:= e" := (@write' _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at level 70).*)
 (** TODO: heap writes that update the predicate.  Because of the monadic style, we'll actually
    need a new axiom and syntax support for this, to rebind the variable at the strengthened type *)
@@ -119,46 +113,49 @@ Qed.
 Program Axiom read_imp : forall {Δ}{A B:Set}`{rel_fold A}{P R G}`{hreflexive G}`{rgfold R G = B}(x:ref{A|P}[R,G]), rgref Δ B Δ.
 
 (* Writing with an impure source expression (and direct ref value) *)
-Program Axiom write_imp_exp : forall {Δ Δ'}{A:Set}`{rel_fold A}{P R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:rgref Δ A Δ')
-                              (meta_x_deref:rgref Δ A Δ') (meta_e_fold:rgref Δ A Δ')
-                              {guar:forall h env, G (valueOf env h meta_x_deref) (valueOf env h e) h (heap_write x (valueOf env h e) h)}
-                              {pres:(forall h env, P (valueOf env h meta_x_deref) h -> P (valueOf env h meta_e_fold) (heap_write x (valueOf env h meta_e_fold) h))}
+Program Axiom write_imp_exp : forall {Δ Δ'}{A:Set}{P R G}`{readable_at A R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:rgref Δ A Δ')
+(* TODO: These Δs are ordered wrong...*)(meta_x:rgref Δ A Δ') (meta_e:rgref Δ A Δ')
+                              {guar:forall h env, G (valueOf env h meta_x) (valueOf env h e) h (heap_write x (valueOf env h e) h)}
+                              {pres:(forall h env, P (valueOf env h meta_x) h -> P (valueOf env h meta_e) (heap_write x (valueOf env h meta_e) h))}
                               , rgref Δ unit Δ'.
 Notation "[[ x ]]:= e" := (@write_imp_exp _ _ _ _ _ _ _ _ x e ({{{read_imp x}}}) ({{{e}}}) _ _) (at level 70).
 
-Axiom alloc : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T), 
+Axiom alloc : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}
+                     P R G {FT:readable_at T R G} (e:T), 
                 stable P R ->        (* predicate is stable *)
                 (forall h, P e h) -> (* predicate is true *)
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
-                G ⊆ R ->
+                G ⊆ R ->             (* self-splitting *)
                 rgref Δ (ref{T|P}[R,G]) Δ.
 Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _ _) (at level 70).
 (** Sometimes it is useful to refine P to give equality with the allocated value, which
     propagates assumptions and equalities across "statements." *)
-Axiom alloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (e:T) (meta_e:T),
+Axiom alloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}
+                      P R G {FT:readable_at T R G} (e:T),
                 stable P R ->        (* predicate is stable *)
                 (forall h, P e h) -> (* predicate is true *)
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
-                G ⊆ R ->
-                 rgref Δ (ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G]) Δ.
-Notation "Alloc! e" := (alloc' _ _ _ e ({{{e}}}) _ _ _ _ _ _) (at level 70).
+                G ⊆ R ->             (* self-splitting *)
+                 rgref Δ (ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=e))}[R,G]) Δ.
+Notation "Alloc! e" := (alloc' _ _ _ e _ _ _ _ _ _) (at level 70).
                                  
 
   
 Notation "x <- M ; N" := (rgref_bind M (fun x => N)) (at level 49, right associativity).
 
-Axiom varalloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (v:var) (e:T) (meta_e:T),
+Axiom varalloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}
+                         P R G {FT:readable_at T R G} (v:var) (e:T),
                 stable P R ->        (* predicate is stable *)
                 (forall h, P e h) -> (* predicate is true *)
                 precise_pred P ->    (* P precise *)
                 precise_rel R ->     (* R precise *)
                 precise_rel G ->     (* G precise *)
-                 rgref Δ unit (v:ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=meta_e))}[R,G],Δ).
-Notation "VarAlloc! v e" := (varalloc' _ _ _ v e ({{{e}}}) _ _ _ _ _) (at level 70).
+                 rgref Δ unit (v:ref{T|P ⊓ (fun t=>fun h=> (locally_const R -> t=e))}[R,G],Δ).
+Notation "VarAlloc! v e" := (varalloc' _ _ _ v e _ _ _ _ _) (at level 70).
 
 
 

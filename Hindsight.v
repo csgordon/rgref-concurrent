@@ -215,24 +215,10 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
                    forall n m R (r:ref{E|invE}[deltaE,deltaE]) h h',
                      R (h[r]) (h'[r]) h h' ->
                      Rel (mkE n m (Some r)) (mkE n m (Some r)) h h') }.
-  Print rel_fold.
-  (* The new ind-ind trick loses the ability to weaken every structural member of an inductive type,
-     so this needs the pending folding update to treat only reflexive folds and field-access folds. *)
-  Program Instance fold_e : rel_fold E :=
-  { rgfold := (fun R G => E);
-    fold := (fun R' G' e => e
-                              (*match e with
-                          | mkE n m None =>
-                              mkE T P R (fun x x' h h' => G x x' h h' /\
-                                                            forall n' m' r, h[r]=x -> h'[r]=x' ->
-                                                              G' (mkE T P R G n' m' (Some r)) (mkE T P R G n' m' (Some r)) h h') n m None
-                          | mkE T P R G n m (Some tl) =>
-                              mkE T P R (fun x x' h h' => G x x' h h' /\
-                                                            (forall n' m' r (ir:ImmediateReachability T), h[r]=x -> h'[r]=x' ->
-                                                              G' (mkE T P R G n' m' (Some r)) (mkE T P R G n' m' (Some r)) h h'))
-                                  n m (Some (@convert_G T P R G _ _ _ _ tl))
-                          end*) )
-  }.
+  Instance fold_e : readable_at E deltaE deltaE :=
+    { res := E ;
+      dofold := fun x => x
+    }.
 
   Lemma precise_invE : precise_pred invE.
   Proof.
@@ -302,8 +288,6 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
     | r_hd : forall hd tl, r_hlb E (invE ⊓ head_props) deltaE deltaE hd (mkHLB hd tl)
     | r_tl : forall hd tl, r_hlb E (invE ⊓ tail_props) deltaE deltaE tl (mkHLB hd tl).
   Global Instance reach_hlb : ImmediateReachability HindsightListBlock := { imm_reachable_from_in := r_hlb }.
-  Instance fold_HLB : rel_fold HindsightListBlock. Admitted.
-                                                     
            
   Program Definition init_HL {Γ}(_:unit) : rgref Γ hindsight_list Γ :=
     tail <- Alloc (mkE ∞ false None);
@@ -352,7 +336,6 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
                                   end)
     end
   .
-  Next Obligation. Admitted. (* folding.. *)
   Next Obligation. (* Now with tie b/t ! and some heap, can invalidate the None using head_props *) Admitted.
   Next Obligation. (* Need refining observation that c~>data ≪≪ k, and since k ≪≪ ∞, next is non-null *) Admitted.
   Next Obligation. eapply pred_and_proj1; eauto. Qed.
@@ -460,11 +443,15 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
                         )
                  end
               ) tt.
-  Next Obligation. compute. intros; subst. reflexivity. Qed.
+  Next Obligation. compute. intros; subst. subst. reflexivity. Qed.
+  Next Obligation. compute. intros. subst. auto. Qed.
   Next Obligation.
     fixdefs. red. intros. destruct H0. subst. constructor. (* TODO: plumb k << ∞ *) admit. Qed.
   Next Obligation. firstorder. Qed.
-  Next Obligation. firstorder. Qed.
+  Next Obligation. (* TODO: This is broken w/ LinAlloc using rely local_imm,
+                      since there's no heap constraint. But using havoc as before
+                      violates containment.... *)
+  Admitted.
   Next Obligation. (* deltaE proof for the write *)
     assert (deltaE' ⊆ deltaE). fixdefs. firstorder. apply H0. clear H0.
     destruct H4. rewrite H3.

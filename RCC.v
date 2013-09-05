@@ -82,7 +82,7 @@ Module RCCImpl : RCC.
                                {guar:forall h env, G (valueOf env h meta_x_deref) (valueOf env h e) h (hwrite l _ _ _ _ x (valueOf env h e) h)}
                                {pres:(forall h env, P (valueOf env h meta_x_deref) h -> P (valueOf env h meta_e_fold) (hwrite _ _ _ _ _ x (valueOf env h meta_e_fold) h))}
                                : rgref Γ unit Γ' :=
-                               @write_imp_exp Γ Γ' A _ P R G _ x e meta_x_deref meta_e_fold guar pres.
+                               @write_imp_exp Γ Γ' A P R G _ _ x e meta_x_deref meta_e_fold guar pres.
 
   Program Definition rcc_alloc {Γ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}{FT:rel_fold T} P R G (l:lock) (e:T) 
                 `(stable P R)        (* predicate is stable *)
@@ -102,7 +102,6 @@ Require Import Coq.Arith.Arith.
 Import RCCImpl.
 (** rccref is opaque. *)
 (** TODO: Figure out how to stash this notation /inside/ the module! *)
-Notation "'rccwrite' x <:= e" := (@write' _ _ _ _ _ _ _ _ x e ({{{!x}}}) ({{{e}}}) _ _) (at level 60).
 Notation "'RCCAlloc' l e" := (rcc_alloc _ _ _ l e _ _ _ _ _) (at level 70).
 Section RaceFreeMonotonicCounter.
   Definition increasing : hrel nat :=
@@ -118,7 +117,6 @@ Section RaceFreeMonotonicCounter.
   Check @rcc_write.
   Local Obligation Tactic := intros; compute [increasing hreflexive]; eauto; try apply natsp.
   Program Definition inc_monotonic {Γ l}{w:var}{pf:tymember w (ref{lockwitness l|locked}[empty,locked-->unlocked]) Γ} (p:rf_monotonic_counter l) : rgref Γ unit Γ :=
-    (*rccwrite p <:= ((rcc_read p _ _) + 1).*)
     (* We can't directly add to the read result because that result is monadic.  Instead we have to use pureApp. *)
     @rcc_write Γ Γ nat _ any increasing increasing _ l _ _ p
         (@pureApp _ _ _ _ _ (plus 1) (@rcc_read Γ _ _ _ _ _ _ l w pf p _ _))

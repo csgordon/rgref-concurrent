@@ -59,7 +59,10 @@ Instance contains_rgrList : Containment rgrList :=
 
 (** As usual, folding is a mess, and needs to be split into identity folds and component/field folds.
 *)
-Instance rgrList_fold : rel_fold rgrList. Admitted.
+Instance rgrList_fold : readable_at rgrList list_imm list_imm :=
+  { res := rgrList ;
+    dofold := fun x => x
+  }.
 Require Import Coq.Program.Equality.
 Lemma precise_list_imm : precise_rel list_imm.
 Proof. compute[precise_rel imm_reachable_from_in reach_rgrList]. intros.
@@ -90,9 +93,9 @@ Next Obligation. intros. rewrite <- (H1 x x' h h'); eauto. Qed.
 Program Definition cons { Γ } n (tl meta_tl:list) 
   : rgref Γ (ref{rgrList|any⊓(fun l h => locally_const list_imm -> l=rgrl_cons n (convert_P _ _ _ _))}[list_imm,list_imm]) Γ :=
   (*Alloc! (rgrl_cons' rgrList' P list_imm list_imm n (convert_P _ _ _ tl)).*)
-  alloc' _ _ _ (rgrl_cons n (convert_P _ _ _ tl)) (rgrl_cons n (convert_P _ _ _ meta_tl)) _ _ _ _ _ _.
+  alloc' _ _ _ (rgrl_cons n (convert_P _ _ _ tl)) _ _ _ _ _ _.
 Check cons.
-Notation "'RGCons' n tl ::" := (@cons _ n tl ({{{tl}}})) (at level 100).
+Notation "'RGCons' n tl ::" := (@cons _ n tl) (at level 100).
 
 Record list_container := mkList {head : list}.
 

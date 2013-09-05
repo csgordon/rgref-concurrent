@@ -13,8 +13,8 @@ Class FieldType (T : Set) (F : Set) `{FieldTyping T F} (f:F) (FT : Set) := {
 }.
 
 (* Field-aware heap access primitives *)
-Axiom field_read : forall {T B F Res:Set}{P R G}`{rel_fold T}
-                          `{rgfold R G = B}
+Axiom field_read : forall {T B F Res:Set}{P R G}`{readable_at T R G}
+                          `{res = B}
                           `{hreflexive G}
                           (r:ref{T|P}[R,G]) (f:F)
                           `{FieldType B F f Res},
@@ -22,15 +22,15 @@ Axiom field_read : forall {T B F Res:Set}{P R G}`{rel_fold T}
 
 Notation "x ~> f" := (@field_read _ _ _ _ _ _ _ _ _ _ x f _ _) (at level 50).
 
-Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:rel_fold T}
+Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:readable_at T R G}
                            (r:ref{T|P}[R,G]) (f:F) (e : Res)
                            `{FieldTyping T F}
                            {ft:FieldType T F f Res}
                            `{forall h v, 
                                P v h -> 
-                               (forall Post ft' fte' (pf1:rgfold R G = Post) pf2 x y,
+                               (forall Post ft' fte' (pf1:res = Post) pf2 x y,
                                    @field_read T Post F Res P R G folder pf1 pf2 r f x y =
-                                   @getF (@rgfold T folder R G) F ft' f Res fte' (@fold T folder R G v)) ->
+                                   @getF res F ft' f Res fte' (dofold v)) ->
                                G v (@setF T F _ f Res ft v e) h (heap_write r (@setF T F _ f Res ft v e) h)},
                            rgref Γ unit Γ.
 
@@ -102,6 +102,7 @@ Global Instance array_reachable {n:nat}{T:Set}`{ImmediateReachability T} : Immed
                              exists f, imm_reachable_from_in r (array_read arr f)
 }.
 
+(* TODO: Update to readable_at *)
 Global Instance array_fold {n:nat}{T:Set}`{rel_fold T} : rel_fold (Array n T) :=
 {
   rgfold := fun R G => Array n (rgfold havoc

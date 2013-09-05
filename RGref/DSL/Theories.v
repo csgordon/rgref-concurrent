@@ -56,6 +56,19 @@ Proof.
 Qed.
 Hint Resolve local_imm_refl.
 
+(** We can always read when we have only one writable ref *)
+Global Instance strong_read (T:Set) : readable_at T local_imm havoc :=
+  { res := T ;
+    dofold := fun x => x
+  }.
+(** And we can always read when the guarantee is strictly local *)
+Global Instance weak_read (T:Set) : readable_at T local_imm local_imm :=
+  { res := T ;
+    dofold := fun x => x
+  }.
+
+
+
 Definition heap_agnostic_pred {A:Set} (P:hpred A) := forall a h h', P a h -> P a h'.
 Definition heap_agnostic_rel {A:Set} (R:hrel A) := forall a a' h h' h'' h''', R a a' h h' -> R a a' h'' h'''.
 

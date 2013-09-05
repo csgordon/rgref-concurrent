@@ -15,11 +15,11 @@ Global Instance reach_ts_node : ImmediateReachability Node :=
                              end }.
 Global Instance node_contains : Containment Node :=
 { contains := fun R => True }. (* the recursive refs are heap-agnostic (immutable) *)
-Global Instance node_fold : rel_fold Node :=
-{
-  rgfold := fun R G => Node; (* Nodes grant no heap mutation permission to reachable state *)
-  fold := fun R G nd => nd
-}.
+(* Nodes grant no heap mutation capabilities ever, so every fold is safe. *)
+Global Instance node_fold R G : readable_at Node R G :=
+  { res := Node ;
+    dofold := fun x => x
+  }.
 
 (** We'll follow roughly S11.2 of The Art of Multiprocessor Programming:
     a basic Trieber stack, with no backoff or elimination. *)
@@ -82,7 +82,7 @@ Next Obligation. (* Guarantee satisfaction! *)
   apply (@heap_lookup2 _ (fun v h => v=mkNode n (!s))).
 Qed.
 
-Program Definition asB T R G B `{rel_fold T} (pf:rgfold R G = B) (b:rgfold R G) : B.
+Program Definition asB T R G B `{readable_at T R G} (pf:res = B) (b:res) : B.
 intros. rewrite pf in b. exact b. Defined.
 
 (** *** Pop operation *)
@@ -104,12 +104,12 @@ Next Obligation.
 Defined.
 Next Obligation. (** Guarantee Satisfaction *)
   (** Need to export a couple assumptions locally inside this lemma:*)
-  assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:rel_fold T} rpf (epf:rgfold R G=B), deref rpf epf r = asB R G epf (@fold T _ R G (h[r]))). admit.
+  assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:readable_at T R G} rpf (epf:res=B), deref rpf epf r = asB epf (dofold (h[r]))). admit.
   assert (Hs := H _ _ _ _ s). 
   assert (Hhd := H _ _ _ _ hd). 
   erewrite Hhd in Heq_anonymous0. compute in Heq_anonymous0.
   rewrite Hs in Heq_anonymous. (* <-- Can't finish this compute until I fill in admission above. *)
-  assert (Htemp : Some hd = h[s]). admit.
+  assert (Htemp : Some hd = h[s]). admit. (* Computation should solve somehow, but need to update Option folding *)
   rewrite <- Htemp.
   eapply ts_pop. symmetry. apply Heq_anonymous0.
 Qed. 
