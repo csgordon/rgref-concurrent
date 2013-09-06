@@ -91,7 +91,7 @@ Axiom read_fresh_array : forall n T e f, array_read (new_array n T e) f = e.
 Axiom read_updated_cell : forall n T (a:Array n T) f e, array_read (array_write a f e) f = e.
 Axiom read_past_updated_cell: 
     forall n T (a:Array n T) f1 f2 e,
-      f2 <> f2 ->
+      f1 <> f2 ->
       array_read (array_write a f1 e) f2 = array_read a f2.
 Axiom read_map_array : forall n (T B:Set) x (f:T->B) (a:Array n T),
                          array_read (array_map f a) x = f (array_read a x).
