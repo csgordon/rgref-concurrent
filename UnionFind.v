@@ -218,7 +218,8 @@ Next Obligation.
 Qed.
 
 (* This will show up with any array read. *)
-Lemma uf_folding : forall n, rgfold (δ n) (δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
+Lemma uf_folding : forall n, 
+    res (T := uf n) (R := δ n) (G := δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
 Proof.
   intros. simpl.
   f_equal. eapply rgref_exchange; try solve [compute; eauto].
@@ -274,13 +275,13 @@ Next Obligation. unfold Find_obligation_5. eauto. Qed.
     TODO: Relocate to RGref.DSL.Fields. *)
 Axiom field_projection_commutes : 
     forall h F T P R G Res (r:ref{T|P}[R,G]) f
-           (rf:rel_fold T) (rgf:@rgfold T rf R G = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
-      @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@fold T rf R G (h[r])) T rgf))
+           (rf:readable_at T R G) (rgf:res = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@dofold T R G rf (h[r])) T rgf))
               (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
 Axiom field_projection_commutes' : 
     forall h F T P R G Res (r:ref{T|P}[R,G]) f
-           (rf:rel_fold T) (rgf:@rgfold T rf R G = T)
-           `(forall x, (eq_rec _ (fun x => x) (fold x) T rgf) = x)
+           (rf:readable_at T R G) (rgf:res = T)
+           `(forall x, (eq_rec _ (fun x => x) (dofold x) T rgf) = x)
            (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
       @eq Res (@getF T F _ f _ _ (h[r]))
               (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
