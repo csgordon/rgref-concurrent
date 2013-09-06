@@ -157,7 +157,12 @@ Proof.
       (*induction (H i).*) admit. admit.
   (* Union *)
       destruct H. constructor. intros.
-      assert (x = y -> False). admit. (* By induction on H3, h[x0<|x/y|>] have dif vals *)
+      assert (x = y -> False).
+          intros Hbad. subst. rewrite H2 in H0.
+          assert (Hcontra : forall x, x < x -> False) by admit.
+          inversion H0; subst.
+          induction H3. firstorder. destruct H3. firstorder.
+
       rewrite immutable_vals with (h' := h') in H1.
 
       assert (Hx_ascent : terminating_ascent n (array_write x0 x c ) h' x).
@@ -231,6 +236,7 @@ Proof.
   rewrite H2. assumption.
 Qed.
 Hint Resolve refl_δ.
+Instance read_uf {n:nat} : readable_at (uf n) (δ n) (δ n) := id_fold.
 
 (** ** Union-Find Operations *)
 
@@ -273,15 +279,18 @@ Qed.
 (* This will show up with any array read. *)
 Lemma uf_folding : forall n, 
     res (T := uf n) (R := δ n) (G := δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
-Proof.
-  intros. simpl.
-  f_equal. eapply rgref_exchange; try solve [compute; eauto].
+  intros. simpl. unfold uf. reflexivity.
+(*  f_equal. 
+  (* Need to use this axiom for prove the equality, but I need this term
+     (uf_folding n) to be definitionally equal to eq_refl later for some rewriting...*)
+  eapply rgref_exchange; try solve [compute; eauto].
   split; red; intros.
       destruct H; auto.
       split; auto. intros. inversion H; subst a'; subst a.
       (* Need to destruct an application of ascent_root... *)
       eapply path_compression; try  rewrite array_id_update.
-Admitted.
+Admitted.*)
+Defined. (* need to unfold later *)
 Hint Resolve uf_folding.
 Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
 Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
@@ -339,8 +348,12 @@ Axiom field_projection_commutes' :
       @eq Res (@getF T F _ f _ _ (h[r]))
               (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
 Check field_projection_commutes'.
+
+Lemma cellres : forall n, @res (cell n) local_imm local_imm _ = cell n.
+intros. simpl. reflexivity.
+Defined.
       
-Next Obligation.
+Next Obligation. (* δ *)
   unfold Find_obligation_5 in *.
   assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
   edestruct ascent_root. apply H.
@@ -348,98 +361,60 @@ Next Obligation.
   rewrite conversion_P_refeq.
   assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H3; eauto. simpl @getF.
 
+      unfold Find_obligation_8. unfold Find_obligation_9.
+      unfold Find_obligation_10. unfold Find_obligation_3.
+      unfold Find_obligation_4. unfold Find_obligation_1.
+      unfold Find_obligation_2.
   inversion H1.
       subst f0.
-      assert (forall zz,
-                @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+      (** TODO: why can't I make zz eq_refl Set (cell n)??? *)
+      assert (
+                @field_read _ _ _ _ _ _ _ _ (cellres n) (@local_imm_refl _) 
                  (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
                parent _ (@cell_parent n) = x).
           intros. rewrite <- field_projection_commutes' with (h := h) (f := parent).
                   rewrite <- field_projection_commutes' with (h := h) (f := x).
                   apply H4.
-                  (* Can't induct / destruct / invert on zz,
-                     Can't really finish this until uf_folding is no longer
-                      admitted... since we can't reduce eq_rec unless it's eq_refl... *) admit. admit.
+                  simpl. auto.
+                  auto.
+      unfold cellres in *. unfold uf_folding in *.
       rewrite H5. rewrite H5. apply self_root. assumption.
 
       subst r0.
-      assert (forall zz,
-                @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+      assert (
+                @field_read _ _ _ _ _ _ _ _ ((cellres n)) (@local_imm_refl _) 
                  (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r f0 _ (@array_field_index n _ f0))
                parent _ (@cell_parent n) = t).
-          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+          intros. rewrite <- field_projection_commutes' with (h:=h) (f:=parent).
+          rewrite <- H5. f_equal. f_equal. symmetry. assumption.
+          simpl. reflexivity.
+      unfold cellres in *. unfold uf_folding in *.
+
       rewrite H6. 
 
       inversion H4.
           subst t.
-          assert (forall zz,
-                    @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+          assert (
+                    @field_read _ _ _ _ _ _ _ _ ((cellres n)) (@local_imm_refl _) 
                      (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
                    parent _ (@cell_parent n) = x).
-              (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+              rewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
+              rewrite <- field_projection_commutes' with (h:=h); eauto.
+      unfold cellres in *. unfold uf_folding in *.
           rewrite H5. constructor. assumption.
           subst r0.
-          assert (forall zz,
-                    @field_read _ _ _ _ _ _ _ _ zz (@local_imm_refl _) 
+          assert (
+                    @field_read _ _ _ _ _ _ _ _ ((cellres n)) (@local_imm_refl _) 
                      (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r t _ (@array_field_index n _ t))
                    parent _ (@cell_parent n) = t0).
-              (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
+          intros. rewrite <- field_projection_commutes' with (h:=h) (f:=parent); eauto.
+          rewrite <- H8. f_equal. f_equal. 
+          rewrite <- field_projection_commutes' with (h:=h).
+          simpl. reflexivity. simpl. reflexivity.
+              
+      unfold cellres in *. unfold uf_folding in *.
           rewrite H9. assumption.
 Qed.
-(* Alternative approach... Unsure if the getF (h[X]) = X ~> F are provable or sound axioms that should
-   come from somewhere (either above or below)...
-
-  induction H1.
-  assert (root n (h[r]) h i i). constructor. assumption.
-  eapply trans_root. eassumption. 
-      rewrite <- H1. repeat f_equal. rewrite H1. rewrite H0 in H1.
-      inversion H4. clear H6. 
-      unfold Find_obligation_1  in *.
-      unfold Find_obligation_2  in *.
-      unfold Find_obligation_3  in *.
-      unfold Find_obligation_4  in *.
-      unfold Find_obligation_5  in *.
-      unfold Find_obligation_11 in *.
-      unfold Find_obligation_12 in *.
-      unfold Find_obligation_13 in *.
-      unfold Find_obligation_14 in *.
-      unfold Find_obligation_15 in *.
-      assert (forall x,
-                @field_read _ _ _ _ _ _ _ _ x (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r i _ (@array_field_index n _ i))
-               parent _ (@cell_parent n) = i).
-          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
-      rewrite H6. apply H6.
-      assert (forall x,
-                @field_read _ _ _ _ _ _ _ _ x (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r i _ (@array_field_index n _ i))
-               parent _ (@cell_parent n) = i).
-          (* TODO: missing connection  getF (h[X]) = X ~> F for some X and F. *) admit.
-      rewrite H8. apply H8.
-
-      (* We now know that i's parent is t, and t's parent is t. *)
-      assert (t=i). 
-          (* TODO: I'm not 100% certain this is true... *)
-          admit.
-      rewrite H5 in *.
-      eapply IHroot; eauto.
-Qed. *)
-(*
-      eapply trans_root. eapply IHroot.
-      (* Missing connection between h[r]<|X|>=r~>X *) admit.
-      trivial. intros.
-      specialize (IHroot c').
-      apply IHroot.
-
-
-simpl. simpl in H1
-simpl in H1.
-  eapply (trans_root _ _ _ _ ((@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r f0 _ _) ~> parent)).
-  eapply trans_root. apply H1. simpl.
-  simpl.
-  (* TODO: ... *)
-Admitted.
-*)
 
 Require Import Coq.Arith.Bool_nat.
 Definition gt x y := nat_lt_ge_bool y x.
