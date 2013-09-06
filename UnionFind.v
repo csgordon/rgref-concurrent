@@ -2,6 +2,12 @@ Require Import RGref.DSL.DSL.
 Require Import RGref.DSL.Concurrency.
 Require Import RGref.DSL.Fields.
 
+    Axiom immutable_fields : 
+      forall T F H f FT FTT P (r:ref{T|P}[local_imm,local_imm]) h h',
+        @getF T F H f FT FTT (h[r]) = @getF T F H f FT FTT (h'[r]).
+    Axiom immutable_vals :
+      forall T P h h' (r:ref{T|P}[local_imm,local_imm]), h[r]=h'[r].
+
 (** * Lock-Free Linearizable Union-Find
     We're following Anderson and Woll's STOC'91 paper 
     "Wait-free Parallel Algorithms for the Union Find Problem."
@@ -73,6 +79,27 @@ Proof.
       compute; auto.
       simpl. apply H. repeat rewrite proj1_to_nat_comm in H0. inversion H0. constructor. subst. auto with arith.
 Qed.
+Lemma fin_dec : forall n (x y : t n), {x=y}+{not (x=y)}.
+  intros. eapply Fin.rect2 with (a := x) (b := y); intros.
+  left. reflexivity. right. discriminate.
+  right. discriminate. 
+  induction H. subst. left; auto.
+  right. red in b. red. intros. apply b.
+  assert (projT1 (existT (fun n => t n) n0 f) = projT1 (existT (fun n => t n) n0 g)).
+      compute. auto.
+      Check projT2.
+  inversion H.
+  (*
+  assert (cast : forall (A B : Type), A=B -> A -> B).
+      intros. rewrite H1 in X. exact X.
+  set (Hf := cast _ _ H0 (projT2 (existT (fun n => t n) n0 f))).
+  set (Hg := projT2 (existT (fun n => t n) n0 g)).
+  rewrite H0 in Hf.
+  assert (projT2 (existT (fun n => t n) n0 f) = projT2 (existT (fun n => t n) n0 g)).
+      eapply eq_rect. simpl. reflexivity.
+      rewrite H1.
+*)
+Admitted.
 
 End FinResults.
   
@@ -110,16 +137,47 @@ Inductive δ (n:nat) : hrel (uf n) :=
                          root n x h (getF (h[c])) rt ->
                          δ n x (array_write x f c) h h'
   (** Union sets the parent and rank of a self-parent *)
-  | path_union : forall A x xp xr c h h' y xr' yr yp,
-                   root n A h x x ->
-                   h[(array_read A x)] = mkCell n xr xp ->
+  | path_union : forall A x xr c h h' y xr' yr,
+                   (*root n A h x x ->
+                   root n A h y y -> (* MAYBE *)*)
+                   h[(array_read A x)] = mkCell n xr x ->
                    h[c] = mkCell n xr' y ->
-                   h[(array_read A y)] = mkCell n yr yp ->
+                   h[(array_read A y)] = mkCell n yr y ->
                    xr < yr \/ (xr=yr /\ (proj1_sig (to_nat x) < proj1_sig (to_nat y))) ->
                    δ n A (array_write A x c) h h'
 .
-(** TODO *)
-Axiom stable_φ_δ : forall n, stable (φ n) (δ n).
+(** TODO Can't finish this until I fix path_compression to prohibit cycles... *)
+Lemma stable_φ_δ : forall n, stable (φ n) (δ n).
+Proof.
+  intros. red. intros.
+  induction H0.
+  (* Compression *)
+      destruct H. constructor. intros. 
+      induction (fin_dec n f i). subst f.
+      (*induction (H i).*) admit. admit.
+  (* Union *)
+      destruct H. constructor. intros.
+      assert (x = y -> False). admit. (* By induction on H3, h[x0<|x/y|>] have dif vals *)
+      rewrite immutable_vals with (h' := h') in H1.
+
+      assert (Hx_ascent : terminating_ascent n (array_write x0 x c ) h' x).
+         apply trans_ascent. rewrite read_updated_cell. rewrite H1. simpl.
+         rewrite immutable_vals with (h' := h') in H2.
+         apply self_ascent. simpl. rewrite read_past_updated_cell; auto. rewrite H2. auto.
+
+      induction (fin_dec n x i). subst i.
+      apply Hx_ascent.
+      induction (H i).
+        apply self_ascent. rewrite read_past_updated_cell; auto.
+            rewrite immutable_vals with (h' := h') in H5; assumption.
+        rewrite immutable_vals with (h' := h') in t.
+        rewrite immutable_vals with (h' := h') in IHt.
+        induction (fin_dec n x (getF (h'[x0<|i|>]))).
+            apply trans_ascent. rewrite read_past_updated_cell; auto.
+            rewrite <- a. assumption.
+
+        apply trans_ascent. rewrite read_past_updated_cell; auto.
+Qed.
 Hint Resolve stable_φ_δ.
 
 Lemma precise_φ : forall n, precise_pred (φ n).
@@ -132,7 +190,6 @@ Proof.
   eapply trans_ascent. rewrite <- H0; eauto.
   constructor. compute. eexists; reflexivity.
 Qed.
-(** TODO *)
 Lemma precise_root : forall n i j, precise_pred (fun x h => root n x h i j).
 Proof.
   intros. red. intros.
@@ -147,18 +204,14 @@ Lemma precise_δ : forall n, precise_rel (δ n).
     assert (H' := precise_root). red in H'.
     eapply path_compression. eapply H'. apply H1. firstorder.
     eapply H'.
-    Axiom immutable_fields : 
-      forall T F H f FT FTT P (r:ref{T|P}[local_imm,local_imm]) h h',
-        @getF T F H f FT FTT (h[r]) = @getF T F H f FT FTT (h'[r]).
     rewrite immutable_fields with (h' := h).
     apply H2.
     firstorder.
 
-    Axiom immutable_vals :
-      forall T P h h' (r:ref{T|P}[local_imm,local_imm]), h[r]=h'[r].
-    rewrite H in H2. rewrite (immutable_vals _ _ h h2) in H3. rewrite H in H4.
-    eapply path_union. eapply precise_root. eassumption. firstorder.
-      eassumption. eassumption. eassumption. assumption.
+    rewrite H in H1. rewrite (immutable_vals _ _ h h2) in H2. rewrite H in H3.
+    eapply path_union; eauto. 
+      (*eapply precise_root. eassumption. firstorder.
+      eassumption. eassumption. eassumption. assumption.*)
     constructor. repeat red. exists y. compute; reflexivity.
     constructor. repeat red. exists x. compute; reflexivity.
 Qed.
