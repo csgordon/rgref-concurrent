@@ -126,10 +126,7 @@ Hint Resolve refl_prepend.
 
 (* Folding anything into this list container is a no-op: the head already points to a rgrList' with guarantee list_imm,
    so no further restriction is necessary / possible. *)
-Instance lst_cont_fold : rel_fold list_container := {
-  rgfold := (fun R => fun G => list_container) ;
-  fold := fun _ _ x => x
-}.
+Instance lst_cont_fold : readable_at list_container prepend prepend := id_fold.
 
 Require Import Coq.Program.Tactics.
 Program Definition newList { Γ } : rgref Γ (ref{list_container|any}[prepend,prepend]) Γ :=

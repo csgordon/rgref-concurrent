@@ -107,15 +107,11 @@ Inductive msq_contains : hrel MSQ -> Prop :=
                 contains (fun c c' h h' => RR (mkMSQ tl) (mkMSQ tl) h h') ->
               msq_contains RR.
 Instance msq_containment : Containment MSQ := { contains := msq_contains }.
-Instance nd_fold : rel_fold Node.
-  (** TODO: Again, need a workaround for the ind-ind hack + constructor typing args. This defines the identity fold. *)
-Print rel_fold.
-  eapply Build_rel_fold. intros. exact H.
-Defined.
-Instance msq_fold : rel_fold MSQ.
-  (** TODO: Again, need a workaround for the ind-ind hack + constructor typing args. *)
-  eapply Build_rel_fold. intros. exact H.
-Defined.
+
+(** Folding is identity for both, since all inner pointers are already at least
+    as restrictive as outer pointers *)
+Instance nd_fold : readable_at Node deltaNode deltaNode := id_fold.
+Instance msq_fold : readable_at MSQ δmsq δmsq := id_fold.
 
 Lemma precise_valid_node : precise_pred validNode'.
   compute. intros; intuition; eauto. induction H; constructor.
@@ -201,7 +197,9 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
     end) q.
 Next Obligation. (** δmsq guarantee proof *)
   apply msq_dequeue with (n := x). subst hd0.
-  assert (@deref Node _ _ _ _ _  delta_refl eq_refl sent = fold (R := deltaNode) (G := deltaNode) (h[sent])) by admit.
+  (* TODO: Missing axiom or guarantee-specific assumption export *)
+  Check @deref.
+  assert (@deref Node _ _ _ _ _  delta_refl eq_refl sent = dofold (h[sent])) by admit.
   simpl in H1. rewrite <- H1. assumption.
 Qed.
 Next Obligation. (** TODO: This is a hack for a match+refine... Need to fix up induction principle for this to work right. *) admit.
@@ -261,5 +259,5 @@ Next Obligation. (* deltaNode *)
   rewrite non_ptr_eq_based_nonaliasing; eauto.
 Qed.  
 Next Obligation. (* a Set.... probably from field read folding... *) 
-  exact (rgfold deltaNode deltaNode). Defined.
-
+  exact (res (T := Node)).
+Defined.

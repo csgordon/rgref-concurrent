@@ -66,8 +66,11 @@ Global Instance weak_read (T:Set) : readable_at T local_imm local_imm :=
   { res := T ;
     dofold := fun x => x
   }.
-
-
+(** I'm torn about providing this, but it's a common enough pattern (it is
+    the common case that types are only read at one R/G) that
+    we should(?) make it easy as a matter of library design...*)
+Definition id_fold {T:Set}{R G:hrel T} : readable_at T R G :=
+  Build_readable_at T R G T (fun x => x).
 
 Definition heap_agnostic_pred {A:Set} (P:hpred A) := forall a h h', P a h -> P a h'.
 Definition heap_agnostic_rel {A:Set} (R:hrel A) := forall a a' h h' h'' h''', R a a' h h' -> R a a' h'' h'''.
