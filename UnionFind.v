@@ -413,10 +413,23 @@ Next Obligation. (** TODO: UpdateRoot doesn't carry enough information yet to pr
 
   rewrite <- convert_equiv. apply H0. firstorder.
 
+  (** TODO: We don't really need to know that y's rank and parent have
+      certain values, and in fact we can't know that since y may be
+      reparented between the invocation of UpdateRoot and the success
+      of the CAS.  What we should be able to know, and what should
+      be sufficient to preserve acyclicity, is a bound on y's rank.
+      We really don't need to know the parent.
 
+      I THINK it's the case that the rank only ever increases.  But
+      there's no good reference to refine for introducing the bound.
+      We're CASing at index x, which is likely unrelated to y (so no
+      2fCAS), so refining a ref to the old A~>y is no good.
+      Refining the array ref A itself is possible, but sounds hideous.
 
+*)
+  
 
-Admitted.
+Admitted. (* UpdateRoot guarantee (δ n) *)
 
 (** *** Find operation *)
 (** TODO: Path compression *)
