@@ -7,6 +7,22 @@ Require Import RGref.DSL.Fields.
         @getF T F H f FT FTT (h[r]) = @getF T F H f FT FTT (h'[r]).
     Axiom immutable_vals :
       forall T P h h' (r:ref{T|P}[local_imm,local_imm]), h[r]=h'[r].
+(** **** Field projection axioms
+    TODO: Relocate to RGref.DSL.Fields. *)
+Axiom field_projection_commutes : 
+    forall h F T P R G Res (r:ref{T|P}[R,G]) f
+           (rf:readable_at T R G) (rgf:res = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@dofold T R G rf (h[r])) T rgf))
+              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
+Axiom field_projection_commutes' : 
+    forall h F T P R G Res (r:ref{T|P}[R,G]) f
+           (rf:readable_at T R G) (rgf:res = T)
+           `(forall x, (eq_rec _ (fun x => x) (dofold x) T rgf) = x)
+           (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (h[r]))
+              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
+Check field_projection_commutes'.
+
 
 (** * Lock-Free Linearizable Union-Find
     We're following Anderson and Woll's STOC'91 paper 
@@ -144,12 +160,12 @@ Proof.
 Qed.    
 (** ** Change relations and meta properties. *)
 Inductive δ (n:nat) : hrel (uf n) :=
-    (** Technically this permits path extension as well as path compression...
-       and permits creating a cycle... *)
   | path_compression : forall x f c h h' (rt:Fin.t n),
                          φ n x h ->
                          root n x h f rt ->
                          root n x h (getF (h[c])) rt ->
+                         (* The chase assumption means we're not permuting reachability,
+                            which means we're not introducing a cycle. *)
                          chase n x h f (getF (h[c])) ->
                          δ n x (array_write x f c) h h'
   (** Union sets the parent and rank of a self-parent *)
@@ -169,8 +185,7 @@ Proof.
   induction H0.
   (* Compression *)
       destruct H. constructor. intros. 
-      induction (fin_dec n f i). subst f.
-      (*induction (H i).*) admit. admit.
+      (*induction (fin_dec n f i). subst f. *) admit.
   (* Union *)
       destruct H. constructor. intros.
       assert (x = y -> False).
@@ -335,18 +350,72 @@ Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
 (** *** UpdateRoot *)
 Require Import Coq.Arith.Arith.
 Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) (oldrank:nat) (y:Fin.t n) (newrank:nat) : rgref Γ bool Γ :=
-  let old := (A ~> x) in
+  (*let old := (A ~> x) in*)
+  old <- rgret (A ~> x) ;
+  (*
   if (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
           (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
-  then rgret false
-  else (
-      new <- alloc any local_imm local_imm (mkCell n newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
-      fCAS(A → x, old, new)
+*)
+  match (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
+          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
+  with
+  (*then*) |true => rgret false
+  (*else*)|false=> (
+      new <- alloc' any local_imm local_imm (mkCell n newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
+      fCAS(A → x, old, convert new _ _ _ _ _ _ _ _)
   )
+  end
 .
 Next Obligation. (** TODO: UpdateRoot doesn't carry enough information yet to prove δ.
                     Maybe we need to refine something (A? old?) to say x is not its own parent,
                     in such a way as to provide enough information to prove the union case of δ. *)
+  
+  unfold UpdateRoot_obligation_13.
+  unfold UpdateRoot_obligation_14.
+  unfold UpdateRoot_obligation_15.
+  unfold UpdateRoot_obligation_16.
+  unfold UpdateRoot_obligation_17.
+  unfold UpdateRoot_obligation_18.
+  unfold UpdateRoot_obligation_19.
+  unfold UpdateRoot_obligation_20.
+  assert (H := heap_lookup2 h new).
+  destruct H.
+  
+  assert (forall (A B:bool), false = (A || B)%bool -> false = A /\ false = B).
+      intros. induction A0. inversion H1. induction B. inversion H1. auto.
+  assert (Htmp := H1 _ _ Heq_anonymous). clear H1.
+  destruct Htmp.
+  assert (forall (B:bool), false = negb B -> true = B).
+      intros. induction B; inversion H1; eauto.
+
+  assert (H' := H3 _ H1). symmetry in H'. rewrite fin_beq_eq in H'.
+  Locate beq_nat.
+  assert (H'' := H3 _ H2). assert (H''' := beq_nat_eq _ _ H'').
+  clear H3. clear H''.
+  eapply path_union.
+  
+  cut (h[ h[A]<|x|>] = mkCell n oldrank x).
+  intro t; apply t.
+  Check field_projection_commutes'.
+
+  (** TODO: Is there a granularity / atomicity issue w/ the fields of old?
+      Shouldn't be; old is local_imm, and the ptr is only read once, with
+      equivalence with h[A]<|x|> introduced by the CAS *)
+
+  erewrite <- field_projection_commutes with (h:=h) in H'.
+  erewrite <- field_projection_commutes with (h:=h) in H'''.
+  unfold UpdateRoot_obligation_5 in *.
+  unfold UpdateRoot_obligation_3 in *.
+  simpl eq_rec in *.
+  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell n (getF c) (getF c).
+  rewrite (cell_ctor_complete n (h[ _ ])).
+  f_equal; eauto.
+
+  rewrite <- convert_equiv. apply H0. firstorder.
+
+
+
+
 Admitted.
 
 (** *** Find operation *)
@@ -369,22 +438,6 @@ Next Obligation. exact any. Defined.
 Next Obligation. unfold Find_obligation_5. eauto. Qed.
 Next Obligation. intuition. Qed.
 Next Obligation. unfold Find_obligation_5. eauto. Qed.
-
-(** **** Field projection axioms
-    TODO: Relocate to RGref.DSL.Fields. *)
-Axiom field_projection_commutes : 
-    forall h F T P R G Res (r:ref{T|P}[R,G]) f
-           (rf:readable_at T R G) (rgf:res = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
-      @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@dofold T R G rf (h[r])) T rgf))
-              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
-Axiom field_projection_commutes' : 
-    forall h F T P R G Res (r:ref{T|P}[R,G]) f
-           (rf:readable_at T R G) (rgf:res = T)
-           `(forall x, (eq_rec _ (fun x => x) (dofold x) T rgf) = x)
-           (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
-      @eq Res (@getF T F _ f _ _ (h[r]))
-              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
-Check field_projection_commutes'.
 
 Lemma cellres : forall n, @res (cell n) local_imm local_imm _ = cell n.
 intros. simpl. reflexivity.
