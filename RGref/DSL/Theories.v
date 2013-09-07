@@ -55,6 +55,9 @@ Proof.
   compute; eauto.
 Qed.
 Hint Resolve local_imm_refl.
+Axiom immutable_vals :
+  forall T P h h' (r:ref{T|P}[local_imm,local_imm]), h[r]=h'[r].
+
 
 (** We can always read when we have only one writable ref *)
 Global Instance strong_read (T:Set) : readable_at T local_imm havoc :=

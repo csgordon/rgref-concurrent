@@ -36,6 +36,24 @@ Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:readable_at T R G}
 
 Notation "{[ x ~~> f ]}:= e" := (@field_write _ _ _ _ _ _ _ _ x f e _ _ _) (at level 50).
 
+
+Axiom immutable_fields : 
+  forall T F H f FT FTT P (r:ref{T|P}[local_imm,local_imm]) h h',
+    @getF T F H f FT FTT (h[r]) = @getF T F H f FT FTT (h'[r]).
+Axiom field_projection_commutes : 
+    forall h F T P R G Res (r:ref{T|P}[R,G]) f
+           (rf:readable_at T R G) (rgf:res = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@dofold T R G rf (h[r])) T rgf))
+              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
+Axiom field_projection_commutes' : 
+    forall h F T P R G Res (r:ref{T|P}[R,G]) f
+           (rf:readable_at T R G) (rgf:res = T)
+           `(forall x, (eq_rec _ (fun x => x) (dofold x) T rgf) = x)
+           (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
+      @eq Res (@getF T F _ f _ _ (h[r]))
+              (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
+
+
 Section FieldDemo.
 
   Inductive D : Set :=
