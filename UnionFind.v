@@ -269,6 +269,22 @@ Lemma precise_δ : forall n, precise_rel (δ n).
 Qed.
     
 Hint Resolve precise_φ precise_δ.
+
+(** TODO: δ seems to only be reflexive when applied to arrays satisfying
+    φ.  This is intuitively reasonable; if reads of a ref{T|P}[R,G] occur
+    where P "implies" G reflexive, then it's fine, as with any P' where
+    P' => P.  Maybe readable_at should take a P predicate as well,
+    any maybe the reflexivity requirements should be moved to
+    readable_at.  Then,
+        Class ConditionallyReflexive {T:Set}(P:hpred T)(G:hrel T) :=
+        { irefl : forall t h, P t h -> G t t h h }.
+        Class Reflexive {T:Set}(G:hrel T) := { r : hreflexive G }.
+        Instance RIR {T}{P}`{Reflexive G} : ConditionallyReflexive P G :=
+        { irefl := fun t h Pth => r t h }.
+        Class readable_at T P R G `{ConditionallyReflexive P G} := <as before>
+    And then we'd pretty much require a readable_at wherever a proof
+    of hreflexive was required before (pretty much already true).
+*)
 Lemma refl_δ : forall n, hreflexive (δ n).
 Proof.
   intros; red; intros.
@@ -427,7 +443,6 @@ Next Obligation. (** TODO: UpdateRoot doesn't carry enough information yet to pr
       Refining the array ref A itself is possible, but sounds hideous.
 
 *)
-  
 
 Admitted. (* UpdateRoot guarantee (δ n) *)
 
@@ -470,7 +485,6 @@ Next Obligation. (* δ *)
       unfold Find_obligation_2.
   inversion H1.
       subst f0.
-      (** TODO: why can't I make zz eq_refl Set (cell n)??? *)
       assert (
                 @field_read _ _ _ _ _ _ _ _ (cellres n) (@local_imm_refl _) 
                  (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
