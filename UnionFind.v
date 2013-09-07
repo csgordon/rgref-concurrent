@@ -117,6 +117,16 @@ Inductive terminating_ascent (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Prop :=
                   terminating_ascent n x h i
   | trans_ascent : terminating_ascent n x h (getF (h[x <| i |>])) ->
                    terminating_ascent n x h i.
+
+Inductive chase (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Fin.t n -> Prop :=
+  | self_chase : (*(getF (h[x<|i|>])) = i ->*)
+                 chase n x h i i
+  | trans_chase : forall t f,
+                    chase n x h t f ->
+                    (getF (h[x<|i|>])) = t ->
+                    chase n x h i f
+.
+
 Inductive φ (n:nat) : hpred (uf n) :=
   pfφ : forall x h,
           (forall i, terminating_ascent n x h i) ->
@@ -133,8 +143,10 @@ Inductive δ (n:nat) : hrel (uf n) :=
     (** Technically this permits path extension as well as path compression...
        and permits creating a cycle... *)
   | path_compression : forall x f c h h' (rt:Fin.t n),
+                         φ n x h ->
                          root n x h f rt ->
                          root n x h (getF (h[c])) rt ->
+                         chase n x h f (getF (h[c])) ->
                          δ n x (array_write x f c) h h'
   (** Union sets the parent and rank of a self-parent *)
   | path_union : forall A x xr c h h' y xr' yr,
@@ -203,15 +215,31 @@ Proof.
       eapply trans_root. apply IHroot. rewrite <- H0. auto.
       repeat constructor. repeat red. exists i. repeat red. reflexivity.
 Qed.
+Lemma precise_chase : forall n i j, precise_pred (fun x h => chase n x h i j).
+Proof.  
+  intros. red; intros.
+  induction H. 
+      constructor; intros. (*rewrite immutable_fields with (h' := h). auto.*)
+      eapply trans_chase. eassumption.
+      rewrite immutable_fields with (h' := h).
+      auto.
+Qed.
 Lemma precise_δ : forall n, precise_rel (δ n).
   intros. red. intros.
   induction H1.
     assert (H' := precise_root). red in H'.
-    eapply path_compression. eapply H'. apply H1. firstorder.
+    eapply path_compression. 
+    assert (Htmp := precise_φ n). red in Htmp. eapply Htmp. apply H1. auto.
+        eauto. rewrite immutable_fields with (h' := h). 
+        eapply (precise_root n). eauto. eauto.
+    eapply precise_chase. rewrite immutable_vals with (h' := h). eassumption.
+    eauto.
+
+    (*eapply H'. apply H1. firstorder.
     eapply H'.
     rewrite immutable_fields with (h' := h).
     apply H2.
-    firstorder.
+    firstorder.*)
 
     rewrite H in H1. rewrite (immutable_vals _ _ h h2) in H2. rewrite H in H3.
     eapply path_union; eauto. 
@@ -234,6 +262,11 @@ Proof.
   induction H1.
   rewrite H1. eapply self_root; eauto.
   rewrite H2. assumption.
+  
+  eapply trans_chase.
+  Focus 2. reflexivity.
+  apply self_chase. 
+
 Qed.
 Hint Resolve refl_δ.
 Instance read_uf {n:nat} : readable_at (uf n) (δ n) (δ n) := id_fold.
@@ -357,7 +390,7 @@ Next Obligation. (* δ *)
   unfold Find_obligation_5 in *.
   assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
   edestruct ascent_root. apply H.
-  eapply path_compression.  eassumption.
+  eapply path_compression.  eassumption. eassumption.
   rewrite conversion_P_refeq.
   assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H3; eauto. simpl @getF.
 
@@ -414,6 +447,72 @@ Next Obligation. (* δ *)
               
       unfold cellres in *. unfold uf_folding in *.
           rewrite H9. assumption.
+          
+
+    rewrite conversion_P_refeq.
+    destruct (heap_lookup2 h c').
+    rewrite H3; try firstorder. simpl.
+      unfold Find_obligation_8 in *. unfold Find_obligation_9 in *.
+      unfold Find_obligation_10 in *. unfold Find_obligation_3 in *.
+      unfold Find_obligation_4 in *. unfold Find_obligation_1 in *.
+      unfold Find_obligation_2 in *.
+    Check trans_chase.
+    Unset Printing Notations. idtac.
+    Set Printing Implicit. idtac.
+    eapply (trans_chase n (h[r]) h f0 
+(@field_read (cell n) (cell n) F 
+                        (t n) (@any (cell n)) (@local_imm (cell n))
+                        (@local_imm (cell n)) (weak_read (cell n))
+                        (@eq_refl Set (cell n)) (local_imm_refl (cell n))
+                        (@field_read (uf n)
+                           (Array n
+                              (ref (cell n) (@any (cell n))
+                                 (@local_imm (cell n)) 
+                                 (@local_imm (cell n)))) 
+                           (t n)
+                           (ref (cell n) (@any (cell n))
+                              (@local_imm (cell n)) 
+                              (@local_imm (cell n))) 
+                           (φ n) (δ n) (δ n) (@read_uf n)
+                           (@eq_refl Set
+                              (Array n
+                                 (ref (cell n) (@any (cell n))
+                                    (@local_imm (cell n))
+                                    (@local_imm (cell n))))) 
+                           (refl_δ n) r f0
+                           (@array_fields n
+                              (ref (cell n) (@any (cell n))
+                                 (@local_imm (cell n)) 
+                                 (@local_imm (cell n))))
+                           (@array_field_index n
+                              (ref (cell n) (@any (cell n))
+                                 (@local_imm (cell n)) 
+                                 (@local_imm (cell n))) f0)) parent
+                        (@fielding n) (@cell_parent n))). 
+    Unset Printing Implicit. idtac.
+    
+    erewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
+
+    Focus 2.
+    rewrite H0. erewrite field_projection_commutes' with (h:=h). reflexivity.
+    simpl; eauto.
+    
+    eapply trans_chase. apply self_chase.
+    erewrite field_projection_commutes' with (h:=h); eauto.
+    f_equal.
+    Focus 2. auto.
+    Check (@getF (uf n) (Fin.t n) array_fields _ _ array_field_index (heap_deref h r)).
+    Check @array_field_index.
+    Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[local_imm,local_imm]).
+      unfold uf. intros. apply @array_field_index.
+    Defined.
+    assert (Helper := fun f pf => field_projection_commutes' h (Fin.t n) (uf n) (φ n) (δ n) (δ n) _ r f _ (uf_folding n) pf (refl_δ n) array_fields (uf_fielding n f)).
+    unfold getF in Helper. unfold uf_fielding in Helper. unfold array_field_index in *.
+    rewrite Helper.
+    reflexivity.
+    compute; eauto.
+   
+
 Qed.
 
 Require Import Coq.Arith.Bool_nat.
