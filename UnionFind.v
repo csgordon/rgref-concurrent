@@ -99,7 +99,7 @@ Lemma fin_dec : forall n (x y : t n), {x=y}+{not (x=y)}.
       eapply eq_rect. simpl. reflexivity.
       rewrite H1.
 *)
-Admitted.
+Admitted. (* fin_dec *)
 
 End FinResults.
   
@@ -137,7 +137,11 @@ Proof.
   intros. induction H. exists i; constructor; eauto.
   destruct IHterminating_ascent. exists x0. eapply trans_root; eauto.
 Qed.
-
+Lemma root_ascent : forall n x h i rt, root n x h i rt -> terminating_ascent n x h i.
+Proof.
+  intros. induction H. constructor; eauto.
+  apply trans_ascent. rewrite H0. auto.
+Qed.    
 (** ** Change relations and meta properties. *)
 Inductive δ (n:nat) : hrel (uf n) :=
     (** Technically this permits path extension as well as path compression...
@@ -322,7 +326,7 @@ Lemma uf_folding : forall n,
       split; auto. intros. inversion H; subst a'; subst a.
       (* Need to destruct an application of ascent_root... *)
       eapply path_compression; try  rewrite array_id_update.
-Admitted.*)
+.*)
 Defined. (* need to unfold later *)
 Hint Resolve uf_folding.
 Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
