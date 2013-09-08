@@ -28,6 +28,10 @@ Definition pred_or {A:Set} (P Q:hpred A) : hpred A :=
   fun a => fun h => P a h \/ Q a h.
 Infix "⊔" := (pred_or) (at level 41).
 
+Definition pred_sub_eq {A:Set} (P Q:hpred A) : Prop :=
+  forall x h, P x h -> Q x h.
+Infix "⊑" := (pred_sub_eq) (at level 41).
+
 Definition rel_and {A:Set} (R:hrel A) (S:hrel A) : hrel A :=
   fun a a' h h' =>
     R a a' h h' /\ S a a' h h'.
@@ -41,8 +45,14 @@ Definition rel_sub_eq {A:Set} (R S:hrel A) : Prop :=
   forall a a' h h', R a a' h h' -> S a a' h h'.
 Infix "⊆" := (rel_sub_eq) (at level 45).
 
+Notation "R ⊆⊇ R'" := (rel_sub_eq R R' /\ rel_sub_eq R' R) (at level 50).
+
 Definition stable {A} (P:hpred A) (R:hrel A) :=
   forall x x' h h', P x h -> R x x' h h' -> P x' h'.
+
+Definition pred_iff {A : Set} (P Q : hpred A) : Prop :=
+  forall x h, P x h <-> Q x h.
+Infix "≡p" := (pred_iff) (at level 45).
 
 (** * References
     ref must be defined completely, otherwise Coq's positivity checks are extremely conservative *)
@@ -68,7 +78,12 @@ Axiom heap_lookup2 : forall {A P R G} (h:heap) (r:ref{A|P}[R,G]), P (h[r]) h.
 Axiom ptr_eq : forall {A A' P P' R R' G G'}, ref A P R G -> ref A' P' R' G' -> Prop.
 Infix "≡" := (ptr_eq) (at level 80).
 
+Axiom rgref_exchange : forall τ P P' R R' G G', P ≡p P' -> R ⊆⊇ R' -> G ⊆⊇ G' -> ref{τ|P}[R,G] = ref{τ|P'}[R',G'].
+
 Axiom type_based_nonaliasing : forall h τ σ P R G Q R' G' `(a:ref{τ|P}[R,G]) `(b:ref{σ|Q}[R',G']) v, τ<>σ ->
+  (heap_write a v h)[b] = h[b].
+Axiom non_ptr_eq_based_nonaliasing : forall h τ P R G Q R' G' (a:ref{τ|P}[R,G]) (b:ref{τ|Q}[R',G']) v,
+  (~ (b ≡ a)) ->
   (heap_write a v h)[b] = h[b].
 
 (** ** Reachability
@@ -134,6 +149,24 @@ Local Instance meta_fold {A:Set} : rel_fold A :=
 End HideMetaFold.
 Notation "{{{ e }}}" := (let mfold : forall A, rel_fold A := @meta_fold in e) (at level 50).
 
+(** *** New Folding
+    The existing rel_fold infrastructure is brittle and painful.  Folding an arbitrary relation isn't even possible
+    in some cases, since constructor arguments that aren't typed by a parameter don't fold right.
+    So let's try a new approach, which explicitly makes a reference at a certain type readable
+    at a certain type.  This way we can treat special cases like identity reads soundly.
+
+    In the future, it will also be easier to extend this to enforce checking soundness of folds.
+*)
+Class readable_at (T : Set) (R G : hrel T) :=
+  { res : Set ;
+    dofold : T -> res
+  }.
+(** We can always build a new fold from an old one *)
+Instance legacy_fold {A:Set}{R G:hrel A}`{rel_fold A} : readable_at A R G :=
+  { res := rgfold R G ;
+    dofold := fold 
+  }.
+
 (** ** Containment 
     Containment means a reference's rely admits at least as much interference
     on references reachable from it as those reachable references themselves. *)
@@ -153,7 +186,7 @@ cbv iota delta beta
 >>
 But that reduction is stronger than default conversion (at least in 8.3... still building 8.4).
 *)
-Axiom deref : forall {A:Set}{B:Set}`{rel_fold A}{P:hpred A}{R G:hrel A}, hreflexive G -> rgfold R G = B -> ref A P R G -> B.
+Axiom deref : forall {A:Set}{B:Set}{P:hpred A}{R G:hrel A}`{readable_at A R G}, hreflexive G -> res = B -> ref A P R G -> B.
 (*Axiom deref : forall {A:Set}{P:hpred A}{R G:hrel A}, ref A P R G -> A.*)
 Notation "! e" := (deref _ _ e) (at level 30). (* with reflexivity, add an _ in there *)
 
@@ -164,8 +197,8 @@ Notation "! e" := (deref _ _ e) (at level 30). (* with reflexivity, add an _ in 
    relationship between results of the fold members of the instances when applied to the
    same value.  This version is really only useful for equating identity folds with
    the identity meta_fold instance results. *)
-Axiom deref_conversion : forall (A B:Set)(f f':rel_fold A) P R G  rf1 rf2 fe1 fe2,
-                         @deref A B f P R G rf1 fe1 = @deref A B f' P R G rf2 fe2.
+Axiom deref_conversion : forall (A B:Set) P R G RA1 RA2 rf1 rf2 fe1 fe2,
+                         @deref A B P R G RA1 rf1 fe1 = @deref A B P R G RA2 rf2 fe2.
 
 Axiom ptr_eq_deref : forall A P P' R R' G G' h (p:ref{A|P}[R,G]) (r:ref{A|P'}[G',R']), p≡r -> h[p]=h[r].
 Hint Resolve ptr_eq_deref.
@@ -239,13 +272,13 @@ Global Instance pair_fold `{A:Set,B:Set,FA:rel_fold A,FB:rel_fold B}: rel_fold (
          (rgfold (fun _ _ _ _ => True) (fun b b' h h' => forall a, G (a,b) (a,b') h h')) ;
     fold := fun R G xy => match xy with (x,y) => (fold x, fold y) end
   }.
+Print rel_fold.
 Global Instance ref_fold `{A:Set,P:hpred A,R:hrel A,G:hrel A} : rel_fold (ref{A|P}[R,G]) :=
   { rgfold := fun R' G' => ref{A|P}[R,G ⋂ (fun a a' h h' => 
-                                             forall (r:ref{A|P}[R,G]), h[r]=a -> h'[r]=a' -> G' r r h h')]
+                                             forall (r:ref{A|P}[R,G]), h[r]=a -> h'[r]=a' -> G' r r h h')];
+    fold := (fun R G r => match r with ref_placeholder n => ref_placeholder _ _ _ _ n end)
   }.
-(* We'll admit the runtime fold for references; the semantics for proofs will need an extensional treatment
-   as an axiom. *)
-Admitted.
+(* Exposing this fold definition above is risky; it could have weird results in some proofs... *)
 
 (** TODO: polymorphic lists *)                             
 
@@ -267,26 +300,60 @@ Global Instance list_pure `{A:Set,PA:pure_type A} : pure_type (list A).
 
 (** ** Additional Axioms
     Things like heap dereference being the same between converted and unconverted references, etc. *)
+(** If we have a reference in hand, it should be valid and self-splitting as long as our allocation
+    and conversion axioms are correct. *)
+Axiom existing_ref_wf_split: forall T P R G (r:ref{T|P}[R,G]), G ⊆ R.
+Axiom existing_ref_wf_prec_R: forall T `{ImmediateReachability T} P R G (r:ref{T|P}[R,G]), precise_rel R.
+Axiom existing_ref_wf_prec_G: forall T `{ImmediateReachability T} P R G (r:ref{T|P}[R,G]), precise_rel G.
+Axiom existing_ref_wf_prec_P: forall T `{ImmediateReachability T} P R G (r:ref{T|P}[R,G]), precise_pred P.
+Axiom existing_ref_wf_stable: forall T P R G (r:ref{T|P}[R,G]), stable P R.
 (** For now we need an explicit subtyping operator *)
-Axiom convert_P : forall {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A},(forall v h, P v h -> P' v h) -> precise_pred P' -> stable P' R -> ref{A|P}[R,G] -> ref{A|P'}[R,G].
-Axiom conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x, h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
 Axiom convert : forall {A:Set}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A},
                 ref{A|P}[R,G] ->
                 (forall v h, P v h -> P' v h) ->
                 (G' ⊆ G) -> (R ⊆ R') -> stable P' R' -> 
                 (G' ⊆ R') -> (* <-- self-splitting, this is a pure conversion *)
+                precise_pred P' -> precise_rel R' -> precise_rel G' ->
                 ref{A|P'}[R',G'].
 Axiom convert_equiv : forall {A}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A}
-                             (r:ref{A|P}[R,G]) pfP pfG pfR stab splt,
-                             forall h, h[r]=h[@convert A P P' R R' G G' _ r pfP pfG pfR stab splt].
+                             (r:ref{A|P}[R,G]) pfP pfG pfR stab splt prP prR prG,
+                             forall h, h[r]=h[@convert A P P' R R' G G' _ r pfP pfG pfR stab splt prP prR prG].
+Program Definition convert_P {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A} 
+                             (impl:forall v h, P v h -> P' v h)
+                             (prec:precise_pred P') (stbl:stable P' R) (r:ref{A|P}[R,G]) : ref{A|P'}[R,G] :=
+          convert r impl _ _ stbl _ _ _ _
+.
+Next Obligation. compute; auto. Qed.
+Next Obligation. compute; auto. Qed.
+Next Obligation. eapply existing_ref_wf_split; eassumption. Qed.
+Next Obligation. eapply existing_ref_wf_prec_R; eassumption. Qed.
+Next Obligation. eapply existing_ref_wf_prec_G; eassumption. Qed.
 
-Axiom refine_ref : forall {A:Set}{P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
+Program Definition convert_G {A:Set}{P:hpred A}{R G G':hrel A}`{ImmediateReachability A}
+                             (prG:precise_rel G') (sub:G' ⊆ G) (r:ref{A|P}[R,G]) : ref{A|P}[R,G'] :=
+          convert r _ sub _ _ _ _ _ _
+.
+Next Obligation. compute; auto. Qed.
+Next Obligation. eapply existing_ref_wf_stable; eassumption. Qed.
+Next Obligation. 
+  intros x x' h h'. intros Hg. compute in sub. specialize (sub x x' h h' Hg).
+  eapply existing_ref_wf_split; eauto.
+Qed.
+Next Obligation. eapply existing_ref_wf_prec_P; eauto. Qed.
+Next Obligation. eapply existing_ref_wf_prec_R; eauto. Qed.
+
+Lemma conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReachability A} pf1 pf2 pf3 x,
+ h[(@convert_P A P P' R G _ pf1 pf2 pf3 x)]=h[x].
+Proof. intros. unfold convert_P. symmetry. eapply convert_equiv.
+Qed.
+
+Axiom refine_ref : forall {A:Set}{P P' R G}{fld : readable_at A R G}{rfl : hreflexive G}
                    (r : ref{A|P}[R,G])
-                   (x : rgfold R G),
+                   (x : res),
                    stable P' R ->
-                   ((@deref _ _ fld _ _ _ rfl (eq_refl) r) = x) -> (* <-- This is only available in special match statements, and flow is restricted! *)
-                   (forall h, (fold (h[r]))=(deref rfl (eq_refl) r) -> (deref rfl eq_refl r) = x -> P (h[r]) h -> P' (h[r]) h) ->
+                   ((@deref _ _ _ _ _ fld rfl (eq_refl) r) = x) -> (* <-- This is only available in special match statements, and flow is restricted! *)
+                   (forall h, (dofold (h[r]))=(deref rfl (eq_refl) r) -> (deref rfl eq_refl r) = x -> P (h[r]) h -> P' (h[r]) h) ->
                    ref{A|P'}[R,G].
-Axiom refinement_equiv : forall {A P P' R G}{fld : rel_fold A}{rfl : hreflexive G}
+Axiom refinement_equiv : forall {A P P' R G}{fld : readable_at A R G}{rfl : hreflexive G}
                                 (r:ref{A|P}[R,G]) x stab pf refpf,
                                 forall h, h[r] = h[@refine_ref A P P' R G fld rfl r x stab pf refpf].
