@@ -246,10 +246,9 @@ Hint Resolve precise_φ precise_δ.
     And then we'd pretty much require a readable_at wherever a proof
     of hreflexive was required before (pretty much already true).
 *)
-Lemma refl_δ : forall n, hreflexive (δ n).
+Lemma refl_δ : forall n, hreflexive (δ (S n)).
 Proof.
   intros; red; intros.
-  induction n. (* 0-sized array.... useless, but illegal? *) admit.
   rewrite <- (array_id_update x (@F1 _)) at 2 .
   (* TODO: This seems to require knowledge that x is wf *) assert (φ _ x h) by admit.
   inversion H; subst. specialize (H0 (@F1 _)).
@@ -280,9 +279,9 @@ Proof. intros. red; intros. inversion H0; subst. auto. Qed.
 Hint Resolve stable_init.
 
 (** *** Allocation of a union-find structure *)
-Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf n|φ n}[δ n, δ n]) Γ :=
+Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf (S n)|φ _}[δ _, δ _]) Γ :=
   indep_array_conv_alloc n (fun i pf => alloc (init_cell i pf) local_imm local_imm 
-                                              (mkCell n 0 (of_nat_lt pf)) _ _ _ _ _ _
+                                              (mkCell (S n) 0 (of_nat_lt pf)) _ _ _ _ _ _
                            ) _ _.
 Next Obligation. constructor. Qed.
 Next Obligation. eapply convert; eauto. Defined.
@@ -295,10 +294,10 @@ Next Obligation.
   unfold alloc_uf_obligation_7 in *.
   constructor. intros.
   constructor.
-  assert (exists i0, exists (pf:i0 < n), i = of_nat_lt pf).
+  assert (exists i0, exists (pf:i0 < S n), i = of_nat_lt pf).
       exists (proj1_sig (to_nat i)). exists (proj2_sig (to_nat i)).
       clear H. clear A. induction i. compute; auto. 
-          unfold to_nat; fold (@to_nat n). 
+          unfold to_nat; fold (@to_nat (n0)).
           destruct (to_nat i).
           unfold proj2_sig. simpl.
           f_equal. rewrite IHi. f_equal. simpl.
@@ -331,7 +330,7 @@ Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
 
 (** *** UpdateRoot *)
 Require Import Coq.Arith.Arith.
-Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) (oldrank:nat) (y:Fin.t n) (newrank:nat) : rgref Γ bool Γ :=
+Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t (S n)) (oldrank:nat) (y:Fin.t (S n)) (newrank:nat) : rgref Γ bool Γ :=
   (*let old := (A ~> x) in*)
   old <- rgret (A ~> x) ;
   (*
@@ -339,11 +338,11 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) 
           (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
 *)
   match (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
-          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
+          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank (S n))) (*old~>rank*) oldrank)))
   with
   (*then*) |true => rgret false
   (*else*)|false=> (
-      new <- alloc' any local_imm local_imm (mkCell n newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
+      new <- alloc' any local_imm local_imm (mkCell (S n) newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
       fCAS(A → x, old, convert new _ _ _ _ _ _ _ _)
   )
   end
@@ -374,7 +373,7 @@ Next Obligation.
   clear H3. clear H''.
   eapply path_union.
   
-  cut (h[ h[A]<|x|>] = mkCell n oldrank x).
+  cut (h[ h[A]<|x|>] = mkCell _ oldrank x).
   intro t; apply t.
   Check field_projection_commutes'.
 
@@ -387,8 +386,8 @@ Next Obligation.
   unfold UpdateRoot_obligation_5 in *.
   unfold UpdateRoot_obligation_3 in *.
   simpl eq_rec in *.
-  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell n (getF c) (getF c).
-  rewrite (cell_ctor_complete n (h[ _ ])).
+  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
+  rewrite (cell_ctor_complete _ (h[ _ ])).
   f_equal; eauto.
 
   rewrite <- convert_equiv. apply H0. firstorder.
@@ -411,15 +410,15 @@ Next Obligation.
 Admitted. (* UpdateRoot guarantee (δ n) *)
 
 (** *** Find operation *)
-Program Definition Find {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (f:Fin.t n) : rgref Γ (Fin.t n) Γ :=
+Program Definition Find {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (f:Fin.t (S n)) : rgref Γ (Fin.t (S n)) Γ :=
   RGFix _ _ (fun find_rec f =>
-               let c : (ref{cell n|any}[local_imm,local_imm]) := (r ~> f) in
+               let c : (ref{cell _|any}[local_imm,local_imm]) := (r ~> f) in
                let p := c ~> parent in
                if (fin_beq p f)
                then rgret f
                else (
-                   c' <- Alloc! (mkCell n (let _ := @cell_rank n in c ~> rank) 
-                                         ((@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r p _ _) ~> parent ) ) ;
+                   c' <- Alloc! (mkCell _ (let _ := @cell_rank (S n) in c ~> rank) 
+                                         ((@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r p _ _) ~> parent ) ) ;
                    _ <- fCAS( r → f, c, convert_P _ _ _ c');
                    find_rec p
                )
@@ -449,9 +448,9 @@ Next Obligation. (* δ *)
   inversion H1.
       subst f0.
       assert (
-                @field_read _ _ _ _ _ _ _ _ (cellres n) (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
-               parent _ (@cell_parent n) = x).
+                @field_read _ _ _ _ _ _ _ _ (cellres _) (@local_imm_refl _) 
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r x _ (@array_field_index _ _ x))
+               parent _ (@cell_parent _) = x).
           intros. rewrite <- field_projection_commutes' with (h := h) (f := parent).
                   rewrite <- field_projection_commutes' with (h := h) (f := x).
                   apply H4.
@@ -462,9 +461,9 @@ Next Obligation. (* δ *)
 
       subst r0.
       assert (
-                @field_read _ _ _ _ _ _ _ _ ((cellres n)) (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r f0 _ (@array_field_index n _ f0))
-               parent _ (@cell_parent n) = t).
+                @field_read _ _ _ _ _ _ _ _ ((cellres _)) (@local_imm_refl _) 
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r f0 _ (@array_field_index _ _ f0))
+               parent _ (@cell_parent _) = t).
           intros. rewrite <- field_projection_commutes' with (h:=h) (f:=parent).
           rewrite <- H5. f_equal. f_equal. symmetry. assumption.
           simpl. reflexivity.
@@ -475,18 +474,18 @@ Next Obligation. (* δ *)
       inversion H4.
           subst t.
           assert (
-                    @field_read _ _ _ _ _ _ _ _ ((cellres n)) (@local_imm_refl _) 
-                     (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r x _ (@array_field_index n _ x))
-                   parent _ (@cell_parent n) = x).
+                    @field_read _ _ _ _ _ _ _ _ ((cellres _)) (@local_imm_refl _) 
+                     (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r x _ (@array_field_index _ _ x))
+                   parent _ (@cell_parent _) = x).
               rewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
               rewrite <- field_projection_commutes' with (h:=h); eauto.
       unfold cellres in *. unfold uf_folding in *.
           rewrite H5. constructor. assumption.
           subst r0.
           assert (
-                    @field_read _ _ _ _ _ _ _ _ ((cellres n)) (@local_imm_refl _) 
-                     (@field_read _ _ _ _ _ _ _ _ (uf_folding n) (refl_δ n) r t _ (@array_field_index n _ t))
-                   parent _ (@cell_parent n) = t0).
+                    @field_read _ _ _ _ _ _ _ _ ((cellres _)) (@local_imm_refl _) 
+                     (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r t _ (@array_field_index _ _ t))
+                   parent _ (@cell_parent _) = t0).
           intros. rewrite <- field_projection_commutes' with (h:=h) (f:=parent); eauto.
           rewrite <- H8. f_equal. f_equal. 
           rewrite <- field_projection_commutes' with (h:=h).
@@ -506,36 +505,36 @@ Next Obligation. (* δ *)
     Check trans_chase.
     Unset Printing Notations. idtac.
     Set Printing Implicit. idtac.
-    eapply (trans_chase n (h[r]) h f0 
-(@field_read (cell n) (cell n) F 
-                        (t n) (@any (cell n)) (@local_imm (cell n))
-                        (@local_imm (cell n)) (weak_read (cell n))
-                        (@eq_refl Set (cell n)) (local_imm_refl (cell n))
-                        (@field_read (uf n)
-                           (Array n
-                              (ref (cell n) (@any (cell n))
-                                 (@local_imm (cell n)) 
-                                 (@local_imm (cell n)))) 
-                           (t n)
-                           (ref (cell n) (@any (cell n))
-                              (@local_imm (cell n)) 
-                              (@local_imm (cell n))) 
-                           (φ n) (δ n) (δ n) (@read_uf n)
+    eapply (trans_chase _ (h[r]) h f0 
+(@field_read (cell _) (cell _) F 
+                        (t _) (@any (cell _)) (@local_imm (cell _))
+                        (@local_imm (cell _)) (weak_read (cell _))
+                        (@eq_refl Set (cell _)) (local_imm_refl (cell _))
+                        (@field_read (uf _)
+                           (Array _
+                              (ref (cell _) (@any (cell _))
+                                 (@local_imm (cell _)) 
+                                 (@local_imm (cell _)))) 
+                           (t _)
+                           (ref (cell _) (@any (cell _))
+                              (@local_imm (cell _)) 
+                              (@local_imm (cell _))) 
+                           (φ _) (δ _) (δ _) (@read_uf _)
                            (@eq_refl Set
-                              (Array n
-                                 (ref (cell n) (@any (cell n))
-                                    (@local_imm (cell n))
-                                    (@local_imm (cell n))))) 
-                           (refl_δ n) r f0
-                           (@array_fields n
-                              (ref (cell n) (@any (cell n))
-                                 (@local_imm (cell n)) 
-                                 (@local_imm (cell n))))
-                           (@array_field_index n
-                              (ref (cell n) (@any (cell n))
-                                 (@local_imm (cell n)) 
-                                 (@local_imm (cell n))) f0)) parent
-                        (@fielding n) (@cell_parent n))). 
+                              (Array _
+                                 (ref (cell _) (@any (cell _))
+                                    (@local_imm (cell _))
+                                    (@local_imm (cell _))))) 
+                           (refl_δ _) r f0
+                           (@array_fields _
+                              (ref (cell _) (@any (cell _))
+                                 (@local_imm (cell _)) 
+                                 (@local_imm (cell _))))
+                           (@array_field_index _
+                              (ref (cell _) (@any (cell _))
+                                 (@local_imm (cell _)) 
+                                 (@local_imm (cell _))) f0)) parent
+                        (@fielding _) (@cell_parent _))). 
     Unset Printing Implicit. idtac.
     
     erewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
@@ -548,12 +547,10 @@ Next Obligation. (* δ *)
     erewrite field_projection_commutes' with (h:=h); eauto.
     f_equal.
     Focus 2. auto.
-    Check (@getF (uf n) (Fin.t n) array_fields _ _ array_field_index (heap_deref h r)).
-    Check @array_field_index.
     Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[local_imm,local_imm]).
       unfold uf. intros. apply @array_field_index.
     Defined.
-    assert (Helper := fun f pf => field_projection_commutes' h (Fin.t n) (uf n) (φ n) (δ n) (δ n) _ r f _ (uf_folding n) pf (refl_δ n) array_fields (uf_fielding n f)).
+    assert (Helper := fun f pf => field_projection_commutes' h (Fin.t _) (uf _) (φ _) (δ _) (δ _) _ r f _ (uf_folding _) pf (refl_δ _) array_fields (uf_fielding _ f)).
     unfold getF in Helper. unfold uf_fielding in Helper. unfold array_field_index in *.
     rewrite Helper.
     reflexivity.
@@ -569,7 +566,7 @@ Definition ignore {Γ Γ' T} (C:rgref Γ T Γ') : rgref Γ unit Γ' :=
   _ <- C;
   rgret tt.
 (** *** Union operation *)
-Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : rgref Γ unit Γ :=
+Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S n)) : rgref Γ unit Γ :=
   RGFix _ _ (fun TryAgain _ =>
                x' <- Find r x;
                y' <- Find r y;
@@ -578,11 +575,11 @@ Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : r
                else (
                    (** TODO: revisit for non-atomic multiple reads, sequencing *)
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
-                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r x (@array_fields n _) (@array_field_index n _ x))
-                                          rank _ (@cell_rank n));
+                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r x (@array_fields (S n) _) (@array_field_index (S n) _ x))
+                                          rank _ (@cell_rank (S n)));
                    yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
-                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding n) _ r y (@array_fields n _) (@array_field_index n _ y))
-                                          rank _ (@cell_rank n));
+                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r y (@array_fields (S n) _) (@array_field_index (S n) _ y))
+                                          rank _ (@cell_rank (S n)));
                    _ <-
                    (if (orb (gt xr yr)
                            (andb (beq_nat xr yr)
@@ -601,13 +598,13 @@ Program Definition union {Γ n} (r:ref{uf n|φ n}[δ n, δ n]) (x y:Fin.t n) : r
         tt.
   
 (** *** Sameset test *)
-Program Definition Sameset {Γ n} (A:ref{uf n|φ n}[δ n,δ n]) x y :=
+Program Definition Sameset {Γ n} (A:ref{uf (S n)|φ _}[δ _,δ _]) (x y:Fin.t (S n)) :=
   RGFix _ _ (fun TryAgain _ =>
                x <- Find A x;
                y <- Find A y;
                if (fin_beq x y)
                then rgret true
-               else (if fin_beq ((@field_read _ _ _ _ _ _ _ _ (@uf_folding n) _ A x _ (@array_field_index n _ x)) ~> parent) x
+               else (if fin_beq ((@field_read _ _ _ _ _ _ _ _ (@uf_folding _) _ A x _ (@array_field_index _ _ x)) ~> parent) x
                      then @rgret Γ _ false
                      else TryAgain tt)
             ) tt.

@@ -99,7 +99,8 @@ Section Arrays.
 (** A functional model of arrays *)
 Definition fin := t.
 Axiom Array : nat -> Set -> Set.
-Axiom new_array : forall (n:nat) (T:Set), T -> Array n T.
+(** We've decided to prohibit 0-length arrays. *)
+Axiom new_array : forall (n:nat) (T:Set), T -> Array (S n) T.
 Axiom array_read : forall {n:nat}{T:Set}, Array n T -> fin n -> T.
 Axiom array_write : forall {n:nat}{T:Set}, Array n T -> fin n -> T -> Array n T.
 
@@ -148,16 +149,17 @@ Global Instance array_field_index {n:nat}{T:Set}{f:fin n} : FieldType (Array n T
   setF := fun v fv => array_write v f fv
 }.
 
-Axiom indep_array : forall {Γ} (n:nat) {T:Set}, (forall (i:nat), i<n -> rgref Γ T Γ) -> rgref Γ (Array n T) Γ.
+Axiom indep_array : forall {Γ} (n:nat) {T:Set}, (forall (i:nat), i<(S n) -> rgref Γ T Γ) -> rgref Γ (Array (S n) T) Γ.
 Axiom indep_array_conv_alloc :
-    forall {Γ} (n:nat) {T0:forall (i:nat) (pf:i<n), Set} {T:Set} {P:hpred (Array n T)} {R G}, 
-    (forall (i:nat) (pf:i<n), rgref Γ (T0 i pf) Γ) ->
+    forall {Γ} (n:nat) {T0:forall (i:nat) (pf:i<(S n)), Set}
+           {T:Set} {P:hpred (Array (S n) T)} {R G}, 
+    (forall (i:nat) (pf:i<(S n)), rgref Γ (T0 i pf) Γ) ->
     forall
-    (cnv : forall i (pf:i<n), T0 i pf -> T),
+    (cnv : forall i (pf:i<(S n)), T0 i pf -> T),
     (forall A h,
-        (forall i (pf:i<n), exists (f0 : T0 i pf), array_read A (of_nat_lt pf) = cnv i pf f0) ->
+        (forall i (pf:i<(S n)), exists (f0 : T0 i pf), array_read A (of_nat_lt pf) = cnv i pf f0) ->
         P A h) ->
-    rgref Γ (ref{(Array n T)|P}[R,G]) Γ.
+    rgref Γ (ref{(Array (S n) T)|P}[R,G]) Γ.
 
 
 End Arrays.
