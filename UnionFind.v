@@ -147,7 +147,7 @@ Inductive δ (n:nat) : hrel (uf n) :=
                    xr < yr \/ (xr=yr /\ (proj1_sig (to_nat x) < proj1_sig (to_nat y))) ->
                    δ n A (array_write A x c) h h'
 .
-(** TODO Can't finish this until I fix path_compression to prohibit cycles... *)
+
 Lemma stable_φ_δ : forall n, stable (φ n) (δ n).
 Proof.
   intros. red. intros.
@@ -223,16 +223,8 @@ Lemma precise_δ : forall n, precise_rel (δ n).
     eapply precise_chase. rewrite immutable_vals with (h' := h). eassumption.
     eauto.
 
-    (*eapply H'. apply H1. firstorder.
-    eapply H'.
-    rewrite immutable_fields with (h' := h).
-    apply H2.
-    firstorder.*)
-
     rewrite H in H1. rewrite (immutable_vals _ _ h h2) in H2. rewrite H in H3.
     eapply path_union; eauto. 
-      (*eapply precise_root. eassumption. firstorder.
-      eassumption. eassumption. eassumption. assumption.*)
     constructor. repeat red. exists y. compute; reflexivity.
     constructor. repeat red. exists x. compute; reflexivity.
 Qed.
@@ -305,7 +297,12 @@ Next Obligation.
   constructor.
   assert (exists i0, exists (pf:i0 < n), i = of_nat_lt pf).
       exists (proj1_sig (to_nat i)). exists (proj2_sig (to_nat i)).
-      induction i. compute; auto. (* obvious but painful *) admit.
+      clear H. clear A. induction i. compute; auto. 
+          unfold to_nat; fold (@to_nat n). 
+          destruct (to_nat i).
+          unfold proj2_sig. simpl.
+          f_equal. rewrite IHi. f_equal. simpl.
+          apply ProofIrrelevance.proof_irrelevance.
   destruct H0 as [i0 [pf H0]].
   specialize (H i0 pf). destruct H as [f0 Hconv].
   rewrite H0. assert (Htmp := heap_lookup2 h f0). simpl in Htmp.
@@ -351,9 +348,7 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf n|φ n}[δ n, δ n]) (x:Fin.t n) 
   )
   end
 .
-Next Obligation. (** TODO: UpdateRoot doesn't carry enough information yet to prove δ.
-                    Maybe we need to refine something (A? old?) to say x is not its own parent,
-                    in such a way as to provide enough information to prove the union case of δ. *)
+Next Obligation.
   
   unfold UpdateRoot_obligation_13.
   unfold UpdateRoot_obligation_14.
@@ -383,7 +378,7 @@ Next Obligation. (** TODO: UpdateRoot doesn't carry enough information yet to pr
   intro t; apply t.
   Check field_projection_commutes'.
 
-  (** TODO: Is there a granularity / atomicity issue w/ the fields of old?
+  (** Is there a granularity / atomicity issue w/ the fields of old?
       Shouldn't be; old is local_imm, and the ptr is only read once, with
       equivalence with h[A]<|x|> introduced by the CAS *)
 
