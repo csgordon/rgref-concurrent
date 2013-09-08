@@ -79,21 +79,12 @@ Lemma fin_dec : forall n (x y : t n), {x=y}+{not (x=y)}.
   right. discriminate. 
   induction H. subst. left; auto.
   right. red in b. red. intros. apply b.
+  inversion H.
   assert (projT1 (existT (fun n => t n) n0 f) = projT1 (existT (fun n => t n) n0 g)).
       compute. auto.
-      Check projT2.
-  inversion H.
-  (*
-  assert (cast : forall (A B : Type), A=B -> A -> B).
-      intros. rewrite H1 in X. exact X.
-  set (Hf := cast _ _ H0 (projT2 (existT (fun n => t n) n0 f))).
-  set (Hg := projT2 (existT (fun n => t n) n0 g)).
-  rewrite H0 in Hf.
-  assert (projT2 (existT (fun n => t n) n0 f) = projT2 (existT (fun n => t n) n0 g)).
-      eapply eq_rect. simpl. reflexivity.
-      rewrite H1.
-*)
-Admitted. (* fin_dec *)
+  eapply Eqdep_dec.inj_pair2_eq_dec. apply Peano_dec.eq_nat_dec.
+  apply H1.
+Qed.
 
 End FinResults.
   
