@@ -571,28 +571,30 @@ Section HindsightTesting.
       apply refine_split; eauto.
 
       (* Missing some interference here *)
-
+      Admitted.
       
       
   End SuperHack.
 
   
 
-  Lemma search_refine : forall k (X:FieldType E F f eptr) (p c p' c':eptr),
+  Lemma search_refine' : forall k (X:FieldType E F f eptr) (p c p' c':eptr),
                         exists (bb:@temporal_backbone _ _ _ _ F _ _ e_hind hs_node_fields _ c c'),
       (** TODO: locate_inner_loop already includes a result... And need to think through calls more... *)
       (locate_inner_loop p c k)~~>(result (p',c')) ≪ [| bb |]~~>result (p',c').
   Proof.
     intros k X.
-    intros p c. induction (locate_inner_loop p c k).
+    intros p c.
+   (* induction (locate_inner_loop p c k).
     cofix.
     setoid_rewrite (trace_dup_eq _ (locate_inner_loop _ _ _)). compute[locate_inner_loop trace_dup]. fold locate_inner_loop.
     intros.
-    rewrite 
+    rewrite *) Abort.
 
   Lemma hindsight_test : forall l k, locate_trace l k ≪ locate_spec l k.
   Proof.
     intros.
+    Abort.
 
 
 
@@ -632,24 +634,3 @@ End HindsightTesting.
 
 
 
-(* TODO: Interference! *)
-Fixpoint temporal_backbone {T P R G}{A}{F:Set}{f:F}`{HindsightField T _ f}`{FieldType T F f (ref{T|P}[R,G])}
-                           (L:list ((ref{T|P}[R,G])*(ref{T|P}[R,G]))) : @trace A :=
-  match L with
-    | nil => ε
-    | cons (b,p) L'=> (local (observe (λ x h, getF x = p) b))~~>
-                             (@temporal_backbone T P R G A _ _ _ _ _ _ L')
-  end.
-
-Definition hand (A B:heap -> Prop) : heap -> Prop :=
-  λ h, A h /\ B h.
-
-Fixpoint current_backbone'  {T P R G}{F:Set}{f:F}`{HindsightField T _ f}`{FieldType T F f (ref{T|P}[R,G])}
-                           (L:list ((ref{T|P}[R,G])*(ref{T|P}[R,G]))) : heap -> Prop :=
-  match L with
-    | nil => (λ _, True)
-    | cons (b,p) L'=> hand (λ h, getF (h[b]) = p) (current_backbone' L')
-  end.
-Definition current_backbone {T P R G}{A}{F:Set}{f:F}`{HindsightField T _ f}`{FieldType T F f (ref{T|P}[R,G])}
-                            (L:list ((ref{T|P}[R,G])*(ref{T|P}[R,G]))) : @trace A :=
-  (local (λ h h', h = h' /\ current_backbone' L h)).
