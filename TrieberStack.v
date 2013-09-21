@@ -82,10 +82,8 @@ Next Obligation. (* Guarantee satisfaction! *)
   apply (@heap_lookup2 _ (fun v h => v=mkNode n (!s))).
 Qed.
 
-Program Definition asB T R G B `{readable_at T R G} (pf:res = B) (b:res) : B.
-intros. rewrite pf in b. exact b. Defined.
-
 (** *** Pop operation *)
+Local Obligation Tactic := intros; compute; eauto.
 Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec s =>
     match !s with
@@ -99,17 +97,29 @@ Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
 Next Obligation.
   f_equal. intros. rewrite H. reflexivity.
   eapply (rgref_exchange); try solve[compute; eauto].
-  split; red; intros. red in H. destruct H. eauto.
+  split; red; intros. simpl in H. destruct H. eauto.
   split; eauto. intros. constructor.
 Defined.
 Next Obligation. (** Guarantee Satisfaction *)
-  (** Need to export a couple assumptions locally inside this lemma:*)
-  assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:readable_at T R G} rpf (epf:res=B), deref rpf epf r = asB epf (dofold (h[r]))). admit.
-  assert (Hs := H _ _ _ _ s). 
-  assert (Hhd := H _ _ _ _ hd). 
-  erewrite Hhd in Heq_anonymous0. compute in Heq_anonymous0.
-  rewrite Hs in Heq_anonymous. (* <-- Can't finish this compute until I fill in admission above. *)
-  assert (Htemp : Some hd = h[s]). admit. (* Computation should solve somehow, but need to update Option folding *)
-  rewrite <- Htemp.
-  eapply ts_pop. symmetry. apply Heq_anonymous0.
+  (** This code is a bit awkward because Coq doesn't have quite the support we need
+      to rework binding appropriately.  We're working atomically here with two assertions
+      about the equality of a value and a dereference expression.  Really, these
+      matches should not see the equality proofs, but should turn the instantaneous
+      property into a stable one, and work with the stable assumption.
+
+      In this case, !s = Some hd isn't needed (h[s] = Some hd) is intro'd by CAS.
+      !hd = mkNode n tl legitimately implies h[hd] = mkNode n tl (for all h) because
+      hd's rely and guarantee are local_imm.
+
+      First thing we'll do is clean up these context issues.
+   *)
+  subst filtered_var. subst filtered_var0. 
+  assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:readable_at T R G} rpf (epf:res=B), deref rpf epf r = asB epf (dofold (h[r]))) by admit. (*OK*)
+  erewrite H0 in Heq_anonymous0. unfold pop_ts_obligation_4 in *. simpl in Heq_anonymous0.
+  clear Heq_anonymous.
+  clear H0.
+  (** Now with the context matching a proper implementation of refining matches... *)
+  Set Printing Implicit. idtac.
+  fold (@local_imm Node). fold (@any Node). fold (@any (option (ref{Node|any}[local_imm,local_imm]))).
+  eapply ts_pop. eauto.
 Qed. 

@@ -169,7 +169,7 @@ list_container <> rgrList'
 
       by manually projecting type inequalities to value inequalities, but it's 
       not really scalable, and difficult to automate :-/ *)
-  admit.
+  admit. (* OK: list_container <> rgrList' *)
 Qed.
 
 End RGRefList.

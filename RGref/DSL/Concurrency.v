@@ -4,7 +4,7 @@ Require Import RGref.DSL.Fields.
 
 (* CAS Axioms and notations *)
 Axiom cas_core : forall Γ T P R G (r : ref{T|P}[R,G]) (e0 : T) (e' : T),
-                        (forall h, h[r]=e0 -> G e0 e' h (heap_write r e' h)) ->
+                        (forall (h:heap), h[r]=e0 -> G e0 e' h (heap_write r e' h)) ->
                         rgref Γ bool Γ.
 
 Notation "CAS( r , e , e' )" := (cas_core _ _ _ _ _ r e e' _) (at level 70).

@@ -60,9 +60,16 @@ Axiom dropvar : forall {Δ} (v:var) (t:Set) (tm:tymember v t Δ), rgref Δ unit 
     and obligation statements.
 *)
 (** TODO: Fix store to work properly with the linear environment. *)
+Program Definition asB T R G B `{readable_at T R G} (pf:res = B) (b:res) : B.
+intros. rewrite pf in b. exact b. Defined.
+
 Program Axiom store : forall {Δ:tyenv}{A:Set}{P R G}`{readable_at A R G}`{res=A}`{hreflexive G}
                              (x:ref{A|P}[R,G])(e:A)
-                             (guar:(forall h, P (!x) h -> G (!x) e h (heap_write x e h)))
+                             (guar:(forall (h:heap)
+                                           (fold_commutes : forall T P R G (r:ref{T|P}[R,G]) B (rf:readable_at T R G) rpf (epf:res=B),
+                                                              deref rpf epf r = asB epf (dofold (h[r]))
+                                           ),
+                                      P (!x) h -> G (!x) e h (heap_write x e h)))
                              (pres:(forall h, P (!x) h -> P e (heap_write x e h))),
                                       rgref Δ unit Δ.
 Notation "[ x ]:= e" := (@store _ _ _ _ _ _ _ _ x e _ _) (at level 70).
