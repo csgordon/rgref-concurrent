@@ -252,7 +252,13 @@ Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
         (match !q with mkMSQ sentinel => sentinel end).
 Next Obligation.  intros; congruence. Qed.
 Next Obligation. intros; subst. destruct H0. subst. destruct (validity (mkNode n None) h). apply H2. constructor. Qed.
-Next Obligation. (* TODO: Again, the LinAlloc change to rely local_imm... *) Admitted.
+Next Obligation. 
+  (* This goal comes from the lin_convert use, trying to prove local_imm ⊆ deltaNode,
+     but this isn't quite true.  Readable from refimmut would do the trick, though,
+     except readable doesn't contain the recursive pointers of a full option field.
+     Really, we're in a case where given the refinement (x=e) the implication is
+     true. *)
+  (* TODO: Change the LinAlloc rely to local_imm to avoid deeper heap reasoning... *) Admitted.
 Next Obligation. (* deltaNode *)
   intros. destruct delta_eq. apply H5.
   destruct (destruct_node v) as [n' [tl' H']]. rewrite H' in *. clear H'.
@@ -263,7 +269,7 @@ Next Obligation. (* deltaNode *)
   eapply node_append.
   (**  Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl). *)
   assert (~ (s ≡ best_tl)). apply H3. left. compute. intros. 
-    (* Trickier now that LinAlloc is rely local_imm... *) admit.
+    (* Trickier now that LinAlloc is rely local_imm... but the append case disproves *) admit.
     (*apply (H6 (mkNode 3 None) (mkNode 3 None) h h). 
   apply H5. constructor.*)
   rewrite non_ptr_eq_based_nonaliasing; eauto.

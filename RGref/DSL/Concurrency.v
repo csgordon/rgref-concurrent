@@ -19,6 +19,7 @@ Axiom field_cas_core : forall Γ T P R G F FT `{FieldTyping T F}
 Notation "fCAS( r → f , e , e' )" := (@field_cas_core _ _ _ _ _ _ _ _ r f _ _ e e' _) (at level 70).
 
 (* Additional specializations of CAS and allocation that are useful for concurrency. *)
+(* TODO: This is only safe if Esafe 0 e *)
 Notation "LinAlloc[ v ] e" := (varalloc' (fun x h => x=e) local_imm havoc v e _ _ _ _ _) (at level 70).
 Axiom lin_convert : forall {Γ T P R G} v P' R' G'
                       {mem:tymember v (ref{T|P}[R,G]) Γ},
