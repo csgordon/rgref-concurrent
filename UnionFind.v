@@ -415,23 +415,13 @@ Next Obligation.
 
   rewrite <- convert_equiv. apply H0. firstorder.
   
+  (* TODO: We don't need the fin_lt x y (and at call sites, we can't provide it!
+     information that y's rank is greater than x's should come from elsewhere;
+     ideally from a Program match, but the paper doesn't have one.  It seems to
+     be /stable/ contextual information about y that its rank is >= oldrank,
+     so it should be provided at the call site.  Need to fix the pf arg. *)
   destruct b. subst oldrank; reflexivity.
   reflexivity.
-
-  (** TODO: We don't really need to know that y's rank and parent have
-      certain values, and in fact we can't know that since y may be
-      reparented between the invocation of UpdateRoot and the success
-      of the CAS.  What we should be able to know, and what should
-      be sufficient to preserve acyclicity, is a bound on y's rank.
-      We really don't need to know the parent.
-
-      I THINK it's the case that the rank only ever increases.  But
-      there's no good reference to refine for introducing the bound.
-      We're CASing at index x, which is likely unrelated to y (so no
-      2fCAS), so refining a ref to the old A~>y is no good.
-      Refining the array ref A itself is possible, but sounds hideous.
-
-*)
 
 Admitted. (* UpdateRoot guarantee (δ n) *)
 
