@@ -445,7 +445,8 @@ Program Definition Find {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (f:Fin.t (S n)
                else (
                    c' <- Alloc! (mkCell _ (let _ := @cell_rank (S n) in c ~> rank) 
                                          ((@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r p _ _) ~> parent ) ) ;
-                   _ <- fCAS( r → f, c, convert_P _ _ _ c');
+                   (*_ <- fCAS( r → f, c, convert_P _ _ _ c');*)
+                   _ <- @field_cas_core _ _ _ _ _ _ _ _ r f _ _ c (convert_P _ _ _ c') _;
                    find_rec p
                )
             ) f
@@ -462,23 +463,32 @@ Defined.
 Next Obligation. (* δ *)
   unfold Find_obligation_5 in *.
   assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
-  edestruct ascent_root. apply H.
-  eapply path_compression.  eassumption. eassumption.
+
+  eapply path_compression. eauto. (* stray dead rt arg *)
+  assumption.
   rewrite conversion_P_refeq.
-  assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H3; eauto. simpl @getF.
+  assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
+  simpl @getF at 2.
 
       unfold Find_obligation_8. unfold Find_obligation_9.
       unfold Find_obligation_10. unfold Find_obligation_3.
       unfold Find_obligation_4. unfold Find_obligation_1.
       unfold Find_obligation_2.
-  inversion H1.
-      subst f0.
+      
+  (* TODO: getF(h[_]) vs _~>f0 *) admit.
+  assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. 
+  rewrite conversion_P_refeq.
+  rewrite H2; eauto. simpl @getF.
+
+(*  inversion H1.
+      subst f0.*)
+(*
       assert (
                 @field_read _ _ _ _ _ _ _ _ (cellres _) (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r x _ (@array_field_index _ _ x))
-               parent _ (@cell_parent _) = x).
+                 (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r f0 _ (@array_field_index _ _ f0))
+               parent _ (@cell_parent _) = f0).
           intros. rewrite <- field_projection_commutes' with (h := h) (f := parent).
-                  rewrite <- field_projection_commutes' with (h := h) (f := x).
+                  rewrite <- field_projection_commutes' with (h := h) (f := f0).
                   apply H4.
                   simpl. auto.
                   auto.
@@ -524,6 +534,7 @@ Next Obligation. (* δ *)
     rewrite conversion_P_refeq.
     destruct (heap_lookup2 h c').
     rewrite H3; try firstorder. simpl.
+      *)
       unfold Find_obligation_8 in *. unfold Find_obligation_9 in *.
       unfold Find_obligation_10 in *. unfold Find_obligation_3 in *.
       unfold Find_obligation_4 in *. unfold Find_obligation_1 in *.
@@ -600,28 +611,50 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                then rgret tt
                else (
                    (** TODO: revisit for non-atomic multiple reads, sequencing *)
+                   (** TODO: Should be be reading from x' and y' here instead of x and y??? *)
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r x (@array_fields (S n) _) (@array_field_index (S n) _ x))
                                           rank _ (@cell_rank (S n)));
                    yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r y (@array_fields (S n) _) (@array_field_index (S n) _ y))
                                           rank _ (@cell_rank (S n)));
-                   _ <-
+                   (*_ <-
                    (if (orb (gt xr yr)
                            (andb (beq_nat xr yr)
                                  (gt (to_nat x) (to_nat y))))
                    then _ (** TODO: Swap(x,y); Swap(xr,yr); <-- Is this updating imperative variables? *)
-                   else rgret tt) ;
-                   ret <- UpdateRoot r x xr y yr;
+                   else rgret tt) ; *)
+                   ret <-
+                   (match (orb (gt xr yr)
+                           (andb (beq_nat xr yr)
+                                 (gt (to_nat x) (to_nat y)))) with
+                   | true => UpdateRoot r y yr x xr _ 
+                   | false => UpdateRoot r x xr y yr _ 
+                   end);
+                   (*ret <- UpdateRoot r x xr y yr _;*)
                    if ret
                    then TryAgain tt
                    else if (beq_nat xr yr)
-                        then ignore (UpdateRoot r y yr y (yr + 1))
+                        then ignore (UpdateRoot r y yr y (yr + 1) _)
                         else rgret tt
                    
                )
             )
         tt.
+(** Proof obligations for UpdateRoot calls *)
+Next Obligation. 
+    Set Printing Notations. idtac.
+    Require Import Coq.Bool.Bool.
+    symmetry in Heq_anonymous.
+    induction (orb_true_elim _ _ Heq_anonymous).
+    left. (* TODO: have xr > yr, but where does x=y come from? That seems unnecessary. Did I use that somewhere? *) admit.
+    right. rewrite andb_true_iff in b. destruct b.
+    split.
+      rewrite fin_lt_nat. (* TODO: bool/refine/prop juggling *) admit.
+      symmetry. apply beq_nat_true. assumption.
+Qed.
+Next Obligation. Admitted. (* update root refinement... *)
+Next Obligation. left. intuition. eauto with arith. Qed.
   
 (** *** Sameset test *)
 Program Definition Sameset {Γ n} (A:ref{uf (S n)|φ _}[δ _,δ _]) (x y:Fin.t (S n)) :=
