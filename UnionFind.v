@@ -605,9 +605,9 @@ Definition ignore {Γ Γ' T} (C:rgref Γ T Γ') : rgref Γ unit Γ' :=
 (** *** Union operation *)
 Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S n)) : rgref Γ unit Γ :=
   RGFix _ _ (fun TryAgain _ =>
-               x' <- Find r x;
-               y' <- Find r y;
-               if (fin_beq x' y')
+               x <- Find r x;
+               y <- Find r y;
+               if (fin_beq x y)
                then rgret tt
                else (
                    (** TODO: revisit for non-atomic multiple reads, sequencing *)
@@ -628,8 +628,8 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                    (match (orb (gt xr yr)
                            (andb (beq_nat xr yr)
                                  (gt (to_nat x) (to_nat y)))) with
-                   | true => UpdateRoot r y yr x xr _ 
-                   | false => UpdateRoot r x xr y yr _ 
+                   | true => UpdateRoot r y yr x yr _ 
+                   | false => UpdateRoot r x xr y xr _ 
                    end);
                    (*ret <- UpdateRoot r x xr y yr _;*)
                    if ret
@@ -646,14 +646,12 @@ Next Obligation.
     Set Printing Notations. idtac.
     Require Import Coq.Bool.Bool.
     symmetry in Heq_anonymous.
-    induction (orb_true_elim _ _ Heq_anonymous).
-    left. (* TODO: have xr > yr, but where does x=y come from? That seems unnecessary. Did I use that somewhere? *) admit.
-    right. rewrite andb_true_iff in b. destruct b.
-    split.
-      rewrite fin_lt_nat. (* TODO: bool/refine/prop juggling *) admit.
-      symmetry. apply beq_nat_true. assumption.
+    right. intuition.
+    (* TODO: trying to make y < x seems wrong; we know the ranks are ordered correctly.  A refine-match on the to-be-parent that its rank is >= a val, and the to-be-child's rank is <= that val, ensures ordering... so this shouldn't be req'd. *) admit.
 Qed.
-Next Obligation. Admitted. (* update root refinement... *)
+Next Obligation. 
+  right. intuition. (* Ditto. *) admit.
+Qed.
 Next Obligation. left. intuition. eauto with arith. Qed.
   
 (** *** Sameset test *)
