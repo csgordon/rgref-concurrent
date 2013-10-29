@@ -38,10 +38,10 @@ Inductive terminating_ascent (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Prop :=
                      terminating_ascent n x h t ->
                      terminating_ascent n x h i.
 
-Inductive chase (n:nat) (x:uf n) (h:heap) : Fin.t n -> Fin.t n -> Prop :=
+Inductive chase (n:nat) (x:uf n) (h:heap) (i : Fin.t n) : Fin.t n -> Prop :=
   | self_chase : (*(getF (h[x<|i|>])) = i ->*)
-                 forall i, chase n x h i i
-  | trans_chase : forall i t f,
+                 chase n x h i i
+  | trans_chase : forall t f,
                     chase n x h t f ->
                     (getF (h[x<|i|>])) = t ->
                     chase n x h i f
@@ -82,37 +82,160 @@ Inductive δ (n:nat) : hrel (uf n) :=
                   δ n A (array_write A x c) h h'
 .
 
+(* TODO: This is no longer true in the base case... 
+Lemma chase_step : forall n x h f i, chase n x h f i -> forall j, getF (h[x<|f|>]) = j -> chase n x h j i.
+Proof.
+  intros. induction H.
+  rewrite H0 in *. subst. constructor; auto.
+  rewrite H0 in *. subst t. assumption.
+Qed.*)
+Lemma chase_rank' : forall n h x i j t,
+                      terminating_ascent n x h i ->
+                      getF (h[x<|i|>]) = t ->
+                      chase n x h t j ->
+                      getF (h[x <| i |>]) ≤ getF (h[x <| j |>]).
+Proof.
+  intros.
+  Require Import Coq.Program.Equality.
+  
+  generalize dependent i.
+  dependent induction H1; intros.
+      dependent induction H. rewrite H in H0. subst i0. auto.
+                             unfold fin in *.
+                             assert (t=i) by congruence. rewrite <- H3 in *. assumption.
+      dependent induction H0. 
+          assert (i=i0) by congruence. subst i0.
+          assert (i=t) by congruence. subst t. rewrite H0 in H1.
+          apply IHchase; eauto. apply self_ascent; eauto.
+          unfold fin in *.
+          assert (i=t0) by congruence. rewrite <- H5 in *.
+      etransitivity; try eassumption.
+      apply IHchase; eauto.
+Qed.
 
+Lemma trans_chase' : forall n x h f i j, j=getF(h[x<|i|>]) -> chase n x h f i -> chase n x h f j.
+Proof.
+  intros.
+  induction H0. eapply trans_chase; eauto. rewrite <- H. constructor.
+  eapply trans_chase. apply IHchase. assumption. assumption.
+Qed.
 Lemma chase_update_preserves_term_ascent :
   forall h h' n x f i mid c,
-    terminating_ascent n x h i ->
+    @eq nat (getF (h[x <| f |>])) (getF (h[c])) ->
+    (forall i, terminating_ascent n x h i) ->
     chase n x h f mid ->
     getF (h [c]) = mid ->
     terminating_ascent n (array_write x f c) h' i.
 Proof.
-  intros h h' n x f.
-  intros i mid c. generalize dependent i.
-  induction 1.
-      (* self *)
-      intros. induction (fin_dec n f i).
-                  subst i. rewrite immutable_vals with (h':=h') in H1.
-                  induction H0. apply self_ascent; rewrite read_updated_cell; eauto.
-                                rewrite H in H2. subst t.  apply IHchase; eauto.
-                  apply self_ascent. rewrite read_past_updated_cell; eauto.
-                                     rewrite immutable_vals with (h':=h). assumption.
-      (* trans *)
-      intros.
-      induction (fin_dec n f i).
-          subst i. rewrite immutable_vals with (h':=h') in H3.
-          (* IH still isn't quite right, since info about f-->mid somehow implies
-             term_ascent for t.  Maybe the initial goal isn't quite general enough
-             to produce the right IH.  Maybe we need something more like 
-             ∀ t mid, chase f t -> chase t mid -> getF(h[c])=mid -> ...
-             and/or I need to induct on the f-->mid chase....
-             This should be a matter of generalizing the IH, and picking the right
-             induction ordering.
-           *)
-Admitted. (* chase_updated_preserves_term_ascent *)
+  intros h h' n x f i mid c Hrank H.
+  intros Hc Hf.
+  induction (H i).
+  (* self *)
+  induction (fin_dec _ f i).
+      subst i.
+      (*Check chase_ind.
+      eapply (chase_ind n x)
+      with (h := h)
+      (P := fun base targ => 
+                   terminating_ascent n (array_write x f c) h' f).*)
+      inversion Hc.
+          apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
+          subst f0. 
+              induction (H mid).
+                induction (fin_dec _ f i). subst f. apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
+                    apply trans_ascent with (t:=i);
+                      try rewrite read_updated_cell;
+                      try rewrite read_past_updated_cell; eauto;
+                      try rewrite immutable_vals with (h':=h') in *.
+                    symmetry; auto.
+
+                    rewrite immutable_vals with (h':=h). rewrite <- Hrank.
+                    etransitivity. rewrite immutable_vals with (h':=h). reflexivity.
+                    rewrite <- immutable_vals with (h:=h)(h':=h').
+                    eapply chase_rank'; eauto.
+                    rewrite immutable_vals with (h:=h)(h':=h').
+                    rewrite H2. assumption.
+
+                    apply self_ascent. rewrite read_past_updated_cell.
+                    erewrite immutable_vals; eassumption. assumption.
+                assert (f = i). clear IHt0 t1 H4 H1.
+                    induction Hc. auto.
+                    assert (i = t). congruence. subst t.
+                    assert (i = t1). congruence. subst t1.
+                    rewrite H2. apply IHHc; eauto.
+                    rewrite <- H2. symmetry; auto.
+                    rewrite <- H2. symmetry; auto.
+                    rewrite <- H2. symmetry; auto.
+                subst f.
+                assert (i = t) by congruence. subst t.
+                assert (t0 = i). subst t0. rewrite <- H0 at 2. reflexivity. subst t0.
+                apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
+
+      apply self_ascent. rewrite read_past_updated_cell; auto. erewrite immutable_vals; eassumption; auto.
+  (* trans *)
+  induction (fin_dec _ f i). subst i.
+  apply trans_ascent with (t:=mid). rewrite read_updated_cell. 
+                                    rewrite immutable_vals with (h':=h).
+                                    rewrite <- Hf. reflexivity.
+                                    rewrite read_updated_cell.
+                                    induction (fin_dec _ f mid).
+                                      rewrite <- a. rewrite read_updated_cell. reflexivity.
+                                      rewrite read_past_updated_cell; auto.
+                                      
+                                      repeat rewrite <- immutable_vals with (h:=h)(h':=h').
+                                      rewrite <- Hrank.
+                                      assert (chase n x h t mid).
+                                          clear H1. clear IHt. clear t0.
+                                          inversion Hc. contradiction b. 
+                                          unfold fin in *. 
+                                          subst f0. 
+                                          assert (t=t0) by congruence. subst t.
+                                          rewrite H2. assumption.
+                                      eapply chase_rank'; auto.
+                                      rewrite H0 in H2. assumption.
+
+
+                                    induction (fin_dec _ f mid).
+                                      rewrite <- a in *. apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
+                                      assert (chase n x h t mid).
+                                          induction Hc. contradiction b. reflexivity.
+                                              unfold fin in *. assert (t1=t) by congruence.
+                                              rewrite H3 in *.
+                                              assumption.
+                                      symmetry in H0.
+                                      assert (Htp := chase_rank' n h x f mid t (H f) H0 H2).
+                                      clear Hf.
+                                      induction (H mid). apply self_ascent. rewrite read_past_updated_cell. erewrite immutable_vals; eassumption. assumption.
+                                      assert (f ≠ t1). intro Hbad.
+                                        subst f. clear IHt1 Htp.
+                                        induction Hc. contradiction b. auto.
+                                        (* f->i->t1, f≠i, and term_ascent i... *) admit.
+                                      apply trans_ascent with (t := t1).
+                                        rewrite read_past_updated_cell; auto; erewrite immutable_vals; eassumption.
+                                        rewrite read_past_updated_cell; auto.
+                                        rewrite immutable_vals with (h' := h).
+                                        rewrite read_past_updated_cell; auto.
+                                        etransitivity; try eassumption.
+                                        erewrite immutable_vals; reflexivity.
+                                        apply IHt1; try eassumption.
+                                        eapply trans_chase'; eauto.
+                                        eapply trans_chase'. apply H3. assumption.
+                                        etransitivity; eassumption.
+    induction (fin_dec _ f t). 
+        apply trans_ascent with (t:=t); try rewrite read_past_updated_cell; auto.
+        erewrite immutable_vals. eassumption.
+        subst f. rewrite read_updated_cell. 
+        
+        repeat rewrite <- immutable_vals with (h:=h)(h':=h').
+        rewrite <- Hrank. assumption.
+
+    apply trans_ascent with (t:=t); try rewrite read_past_updated_cell; auto.
+        erewrite immutable_vals. eassumption.
+        rewrite read_past_updated_cell; auto.
+        rewrite immutable_vals with (h':=h') in *.
+        etransitivity. eassumption.
+        rewrite immutable_vals with (h':=h'). reflexivity.
+Qed.
 
 Require Import Coq.Arith.Lt.
 Lemma stable_φ_δ : forall n, stable (φ n) (δ n).
@@ -390,7 +513,9 @@ Next Obligation.
   destruct a. subst y.
   apply bump_rank with (xr := oldrank) (xr' := newrank); eauto with arith;
     try rewrite <- convert_equiv.
-  admit. (* dealing with h[x].f≡x~>f.... *)
+  erewrite <- field_projection_commutes' with (h:=h) in *; eauto.
+  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
+  rewrite (cell_ctor_complete _ (h[h[A]<|x|>])). f_equal; eauto.
   assert (Htmp := heap_lookup2 h new). destruct Htmp. firstorder.
 
   (* path union *)
@@ -409,7 +534,6 @@ Next Obligation.
   unfold UpdateRoot_obligation_5 in *.
   unfold UpdateRoot_obligation_3 in *.
   simpl eq_rec in *.
-  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
   rewrite (cell_ctor_complete _ (h[ _ ])).
   f_equal; eauto.
 
@@ -460,12 +584,14 @@ Next Obligation. (* δ *)
   assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
   simpl @getF at 2.
 
-      unfold Find_obligation_8. unfold Find_obligation_9.
-      unfold Find_obligation_10. unfold Find_obligation_3.
-      unfold Find_obligation_4. unfold Find_obligation_1.
-      unfold Find_obligation_2.
+      unfold Find_obligation_8 in *. unfold Find_obligation_9 in *.
+      unfold Find_obligation_10 in *. unfold Find_obligation_3 in *.
+      unfold Find_obligation_4 in *. unfold Find_obligation_1 in *.
+      unfold Find_obligation_2 in *.
       
-  (* TODO: getF(h[_]) vs _~>f0 *) admit.
+  rewrite <- H0.
+  erewrite <- field_projection_commutes' with (h := h) (f := rank); auto.
+
   assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. 
   rewrite conversion_P_refeq.
   rewrite H2; eauto. simpl @getF.
@@ -563,14 +689,32 @@ Next Obligation. (* δ *)
                                  (@local_imm (cell _))) f0)) parent
                         (@fielding _) (@cell_parent _))). 
     Unset Printing Implicit. idtac.
+
+    Check @getF.
+    Check @field_read.
+    Print field_read.
+    assert (Hparenting :
+              (*eq (getF (heap_deref h (array_read (heap_deref h r) f0)))*)
+              eq (@getF _ _ _ parent _ cell_parent (heap_deref h (array_read (heap_deref h r) f0)))
+                 (@field_read _ _ _ _ any local_imm local_imm _ eq_refl (local_imm_refl _) 
+                              (field_read (H0:=eq_refl)(hreflexive0:=refl_δ _) r f0) parent _ _)).
+    rewrite H0. erewrite field_projection_commutes' with (h:=h). reflexivity.
+    simpl; eauto.
     
     erewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
 
     Focus 2.
     rewrite H0. erewrite field_projection_commutes' with (h:=h). reflexivity.
     simpl; eauto.
+    Set Printing Notations. idtac.
     
+    rewrite H0 in Hparenting.
+    repeat rewrite Hparenting.
+
+    (* TODO: self_chase may no longer be appropriate; we may not be at a root.
+       Crap, I turned chase into the old root predicate I deleted... *)
     eapply trans_chase. apply self_chase.
+
     erewrite field_projection_commutes' with (h:=h); eauto.
     f_equal.
     Focus 2. auto.
@@ -582,8 +726,7 @@ Next Obligation. (* δ *)
     rewrite Helper.
     reflexivity.
     compute; eauto.
-   
-
+    
 Qed.
 
 Require Import Coq.Arith.Bool_nat.
