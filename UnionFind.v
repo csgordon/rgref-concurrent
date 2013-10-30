@@ -209,25 +209,41 @@ Proof.
 
                                       induction (fin_dec _ f t1).
                                         rewrite <- a in *. clear dependent t1.
-                                        (* i->f->t *)
-                                        Require Import Coq.Arith.Le.
-                                        assert (heq := le_antisym _ _ Htp H4).
-                                        rewrite heq in *.
-                                      apply trans_ascent with (t := f).
-                                        rewrite read_past_updated_cell; auto; erewrite immutable_vals; eassumption.
-                                        rewrite read_past_updated_cell; auto.
-                                        rewrite read_updated_cell; auto.
-                                        repeat rewrite immutable_vals with (h:=h')(h' := h).
-                                        rewrite Hrank. reflexivity.
-                                        apply trans_ascent with (t:=t); eauto.
-                                          rewrite read_updated_cell; eauto.
-                                          admit. (* ....? *)
-                                          rewrite read_updated_cell; auto.
-                                          repeat rewrite immutable_vals with (h:=h')(h' := h).
-                                          rewrite <- Hrank.
-                                          induction (fin_dec _ f t).
-                                            rewrite <- a in *. rewrite read_updated_cell. rewrite <- Hrank. reflexivity.
-                                            rewrite read_past_updated_cell; eauto.
+                                        (* i->f->t in x, but i->f->(via c)->i in x', which doesn't preserve terminating_ascent,
+                                           so there *should* be a contradiction here somewhere!. *)
+                                        (* In x, we have:
+                                             - H2: chase n x h t i         --- t->...->i
+                                             - H3: getF (h[x<|i|>]) = f    --- i->f
+                                             - H0: getF (h[x<|f|>]) = t    --- f->t
+                                             - H0 w/ H3                    --- i->f->t
+                                           so we have t->...->i and i->...->t, both in x, where all indices
+                                           have terminating ascents.  The only way for this to be consistent
+                                           is for t=f=i... *)
+                                        assert (forall i0 i1, getF (h [x <| i0 |>]) = i1 -> getF (h [x <| i1 |>]) = i0 ->
+                                                              i1 = i0).
+                                            intros A.
+                                            induction (H A).
+                                                intros. unfold fin in *. congruence.
+                                                intros. unfold fin in *.
+                                                  assert (i1=t1) by congruence. rewrite H9 in *.
+                                                  symmetry. apply IHt0; eauto.
+                                        assert (Hdouble :forall X Z, chase n x h X Z -> chase n x h Z X -> X = Z).
+                                          intro X. induction (H X); intros.
+                                                       induction H7; induction H8; auto.
+                                                       assert (f0=t1) by congruence. rewrite <- H11 in *. clear dependent t1.
+                                                       apply IHchase; eauto. eapply trans_chase. eassumption. assumption.
+                                                   assert (chase n x h Z t1).
+                                                       induction H9. eapply trans_chase. constructor. intuition.
+                                                         eapply trans_chase'. eassumption. eapply trans_chase. eassumption. assumption.
+                                                   induction H8. reflexivity. 
+                                                     unfold fin in *. assert (t4 = t1) by congruence. rewrite H12 in *. clear dependent t4.
+                                                     assert (Htmp := IHt0 _ H8 H10). rewrite Htmp in *.
+                                                     symmetry. apply IHt0; try eassumption. eapply trans_chase. constructor. assumption.
+                                        assert (t=i). apply Hdouble; eauto.
+                                            eapply trans_chase; eauto. unfold fin in *. rewrite <- H3.
+                                            eapply trans_chase; eauto. constructor. 
+                                        rewrite H6 in *.
+                                        assumption.
                                         
                                       apply trans_ascent with (t := t1).
                                         rewrite read_past_updated_cell; auto; erewrite immutable_vals; eassumption.
@@ -769,6 +785,8 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r x (@array_fields (S n) _) (@array_field_index (S n) _ x))
                                           rank _ (@cell_rank (S n)));
+                   (** TODO: Should break this up and refine r such that (forall h, h[r<|y|>].rank >= old_y_ptr.rank), which provides
+                       an assumption UpdateRoot needs *)
                    yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r y (@array_fields (S n) _) (@array_field_index (S n) _ y))
                                           rank _ (@cell_rank (S n)));
@@ -797,7 +815,7 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
         tt.
 (** Proof obligations for UpdateRoot calls *)
   (*assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
-                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)) by admit.*)
+                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)).*)
 Next Obligation. 
     Set Printing Notations. idtac.
     Require Import Coq.Bool.Bool.
