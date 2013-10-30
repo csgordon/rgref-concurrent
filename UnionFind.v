@@ -206,10 +206,29 @@ Proof.
                                       assert (Htp := chase_rank' n h x f mid t (H f) H0 H2).
                                       clear Hf.
                                       induction (H mid). apply self_ascent. rewrite read_past_updated_cell. erewrite immutable_vals; eassumption. assumption.
-                                      assert (f ≠ t1). intro Hbad.
-                                        subst f. clear IHt1 Htp.
-                                        induction Hc. contradiction b. auto.
-                                        (* f->i->t1, f≠i, and term_ascent i... *) admit.
+
+                                      induction (fin_dec _ f t1).
+                                        rewrite <- a in *. clear dependent t1.
+                                        (* i->f->t *)
+                                        Require Import Coq.Arith.Le.
+                                        assert (heq := le_antisym _ _ Htp H4).
+                                        rewrite heq in *.
+                                      apply trans_ascent with (t := f).
+                                        rewrite read_past_updated_cell; auto; erewrite immutable_vals; eassumption.
+                                        rewrite read_past_updated_cell; auto.
+                                        rewrite read_updated_cell; auto.
+                                        repeat rewrite immutable_vals with (h:=h')(h' := h).
+                                        rewrite Hrank. reflexivity.
+                                        apply trans_ascent with (t:=t); eauto.
+                                          rewrite read_updated_cell; eauto.
+                                          admit. (* ....? *)
+                                          rewrite read_updated_cell; auto.
+                                          repeat rewrite immutable_vals with (h:=h')(h' := h).
+                                          rewrite <- Hrank.
+                                          induction (fin_dec _ f t).
+                                            rewrite <- a in *. rewrite read_updated_cell. rewrite <- Hrank. reflexivity.
+                                            rewrite read_past_updated_cell; eauto.
+                                        
                                       apply trans_ascent with (t := t1).
                                         rewrite read_past_updated_cell; auto; erewrite immutable_vals; eassumption.
                                         rewrite read_past_updated_cell; auto.
@@ -546,8 +565,12 @@ Next Obligation.
      so it should be provided at the call site.  Need to fix the pf arg. *)
   destruct b. subst oldrank; reflexivity.
   reflexivity.
+  assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
+                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)) by admit.
+  induction (H3 h); intuition. 
+  right. intuition. rewrite fin_lt_nat in H6. assumption.
 
-Admitted. (* UpdateRoot guarantee (δ n) *)
+Qed. (* UpdateRoot guarantee (δ n) *)
 
 (** *** Find operation *)
 Program Definition Find {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (f:Fin.t (S n)) : rgref Γ (Fin.t (S n)) Γ :=
@@ -711,8 +734,6 @@ Next Obligation. (* δ *)
     rewrite H0 in Hparenting.
     repeat rewrite Hparenting.
 
-    (* TODO: self_chase may no longer be appropriate; we may not be at a root.
-       Crap, I turned chase into the old root predicate I deleted... *)
     eapply trans_chase. apply self_chase.
 
     erewrite field_projection_commutes' with (h:=h); eauto.
@@ -775,6 +796,8 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
             )
         tt.
 (** Proof obligations for UpdateRoot calls *)
+  (*assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
+                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)) by admit.*)
 Next Obligation. 
     Set Printing Notations. idtac.
     Require Import Coq.Bool.Bool.
