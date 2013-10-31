@@ -119,6 +119,36 @@ Proof.
   induction H0. eapply trans_chase; eauto. rewrite <- H. constructor.
   eapply trans_chase. apply IHchase. assumption. assumption.
 Qed.
+
+Lemma Hself_ref : forall n x h,
+                  (forall i, terminating_ascent n x h i) ->
+                  forall i0 i1, getF (h [x <| i0 |>]) = i1 -> getF (h [x <| i1 |>]) = i0 ->
+                      i1 = i0.
+  intros n x h H.
+    intros A.
+    induction (H A).
+        intros. unfold fin in *. congruence.
+        intros. unfold fin in *.
+          assert (i1=t) by congruence. rewrite H4 in *.
+          symmetry. apply IHt; eauto.
+Qed.
+Lemma Hdouble : forall n x h,
+                  (forall i, terminating_ascent n x h i) ->
+                  forall X Z, chase n x h X Z -> chase n x h Z X -> X = Z.
+Proof.
+  intros n x h H.
+  intro X. induction (H X); intros.
+               induction H1; induction H2; auto.
+               assert (f=t) by congruence. rewrite <- H5 in *. clear dependent t.
+               apply IHchase; eauto. eapply trans_chase. eassumption. assumption.
+           assert (chase n x h Z t).
+               induction H3. eapply trans_chase. constructor. intuition.
+                 eapply trans_chase'. eassumption. eapply trans_chase. eassumption. assumption.
+           induction H2. reflexivity. 
+             unfold fin in *. assert (t = t1) by congruence. rewrite H6 in *. clear dependent t.
+             assert (Htmp := IHt _ H2 H4). rewrite Htmp in *.
+             symmetry. apply IHt; try eassumption. eapply trans_chase. constructor. assumption.
+Qed.
 Lemma chase_update_preserves_term_ascent :
   forall h h' n x f i mid c,
     @eq nat (getF (h[x <| f |>])) (getF (h[c])) ->
@@ -221,25 +251,9 @@ Proof.
                                            is for t=f=i... *)
                                         assert (forall i0 i1, getF (h [x <| i0 |>]) = i1 -> getF (h [x <| i1 |>]) = i0 ->
                                                               i1 = i0).
-                                            intros A.
-                                            induction (H A).
-                                                intros. unfold fin in *. congruence.
-                                                intros. unfold fin in *.
-                                                  assert (i1=t1) by congruence. rewrite H9 in *.
-                                                  symmetry. apply IHt0; eauto.
-                                        assert (Hdouble :forall X Z, chase n x h X Z -> chase n x h Z X -> X = Z).
-                                          intro X. induction (H X); intros.
-                                                       induction H7; induction H8; auto.
-                                                       assert (f0=t1) by congruence. rewrite <- H11 in *. clear dependent t1.
-                                                       apply IHchase; eauto. eapply trans_chase. eassumption. assumption.
-                                                   assert (chase n x h Z t1).
-                                                       induction H9. eapply trans_chase. constructor. intuition.
-                                                         eapply trans_chase'. eassumption. eapply trans_chase. eassumption. assumption.
-                                                   induction H8. reflexivity. 
-                                                     unfold fin in *. assert (t4 = t1) by congruence. rewrite H12 in *. clear dependent t4.
-                                                     assert (Htmp := IHt0 _ H8 H10). rewrite Htmp in *.
-                                                     symmetry. apply IHt0; try eassumption. eapply trans_chase. constructor. assumption.
-                                        assert (t=i). apply Hdouble; eauto.
+                                            eauto using Hself_ref.
+                                        
+                                        assert (t=i). eapply Hdouble; eauto.
                                             eapply trans_chase; eauto. unfold fin in *. rewrite <- H3.
                                             eapply trans_chase; eauto. constructor. 
                                         rewrite H6 in *.
@@ -272,6 +286,48 @@ Proof.
         rewrite immutable_vals with (h':=h'). reflexivity.
 Qed.
 
+Definition imm_vals' : forall h h' T P r, h[r]=h'[r] :=
+  fun h h' T P => immutable_vals T P h h'.
+Ltac swap h h' := repeat rewrite (imm_vals' h h') in *.
+Ltac arrays h h' :=
+  swap h h';
+  repeat (unfold fin in *;
+           match goal with 
+           | [ |- context[ array_read (array_write ?A ?x ?y) ?x ] ] =>
+               rewrite read_updated_cell
+           | [ H : ?x ≠ ?z |- context[ array_read (array_write ?A ?x ?y) ?z ]] =>
+               rewrite read_past_updated_cell; auto
+           | [ H : ?z ≠ ?x |- context[ array_read (array_write ?A ?x ?y) ?z ]] =>
+               rewrite read_past_updated_cell; auto
+               end).
+
+Lemma ascend_new_heap : forall n x h h', (forall i, terminating_ascent n x h i) ->
+                                         forall i, terminating_ascent n x h' i.
+Proof.
+  intros.
+  induction (H i); arrays h h'.
+      apply self_ascent; eauto.
+      eapply trans_ascent; eauto.
+Qed.
+
+
+Lemma union_identity : forall n x h f y (c:ref{cell n|any}[local_imm,local_imm]),
+                         f≠y -> getF(h[c])=y -> 
+                         terminating_ascent n x h y ->
+                         forall y', chase n x h y y' -> f≠y' ->
+                                    terminating_ascent n (array_write x f c) h y'.
+Proof.
+  intros n x h f y c. intro. intro. intro.
+  
+  revert H0.
+  induction H1.
+  (* self *) intros. induction H2. apply self_ascent; arrays h h'; eauto.
+             assert (i = t) by congruence. rewrite H5 in *. firstorder.
+  (* trans *)
+  intros. 
+  induction H4.
+Admitted.
+
 Require Import Coq.Arith.Lt.
 Lemma stable_φ_δ : forall n, stable (φ n) (δ n).
 Proof.
@@ -282,14 +338,75 @@ Proof.
       eapply chase_update_preserves_term_ascent; eauto.
   (* Union *)
       destruct H. constructor.
-      (*assert (x = y -> False).
-          intros Hbad. subst y. (*rewrite H2 in H0.*)
-          assert (Hcontra := lt_irrefl). unfold not in Hcontra.
-          assert (Hcontra' := le_not_lt). unfold not in Hcontra'.
-          rewrite H0 in *. simpl in *. subst yr.
-          induction H4. firstorder. destruct H3. firstorder.
-*)
-      admit. (* This union stability case is similar to the compression lemma, should be doable. *)
+      
+      cut ( (* Omitting n, x0, H, x *)
+                h[x0<|x|>] = mkCell n xr x ->
+                h[c]=mkCell n xr' y ->
+                xr ≤ xr' ->
+                getF (h[x0<|y|>]) = yr ->
+                xr ≤ yr ->
+                forall i, terminating_ascent n (array_write x0 x c) h' i).
+      intros Hgeneralized.
+      apply Hgeneralized; eauto.
+      etransitivity; eauto. induction H4. eauto with arith. destruct H4. subst xr'. reflexivity.
+
+      intros. 
+
+      (* TODO: It may be worth proving a separate lemma that ascent is preserved for anything reachable from y in the original *)
+
+      induction (H i).
+      (* originally self-ascent *)
+          induction (fin_dec _ x i).
+            subst x. (* remapping the updated cell itself *)
+            apply trans_ascent with (t:=y); arrays h h'; try rewrite H6; eauto.
+              induction (fin_dec _ y i). subst y; arrays h h'. rewrite H1. reflexivity.
+                                         arrays h h'. rewrite H8. simpl.
+                                         induction H4. eauto with arith.
+                                         destruct H4. subst xr'. reflexivity.
+              induction (fin_dec _ y i). subst y; arrays h h'. 
+                                         apply self_ascent; arrays h h'. rewrite H6; auto.
+                        induction (H y). apply self_ascent; arrays h h'.
+                            induction (fin_dec _ i t).
+                                         subst i. 
+                                         (* i = t should be a contradiction:
+                                            i0 -> t, t -> t, and we just made
+                                            x0<|t↦c|><|t|> = mkCell xr' i0, tying a cycle. *)
+                                         arrays h h'.
+                                         rewrite H5 in H12. rewrite H8 in H12. simpl in H12.
+                                         induction H4. 
+                                         assert (xr < yr). eauto with arith.
+                                         assert (xr ≤ yr). eauto with arith.
+                                         Require Import Coq.Arith.Le.
+                                         assert (xr = yr). eauto using le_antisym.
+                                         subst xr. exfalso. eapply lt_irrefl. eassumption.
+                                         destruct H4. subst yr.
+                                         rewrite <- H4 in H12.
+                                         assert (xr = xr'). eauto using le_antisym. subst xr.
+                                     apply trans_ascent with (t:=t); arrays h h'.
+                                       rewrite H1. rewrite <- H4. reflexivity.
+                                     admit.
+                             apply trans_ascent with (t:=t); arrays h h'.
+                               assert (getF (h'[c]) = i0). rewrite H1. reflexivity.
+                               eapply union_identity; try apply H13; eauto.
+                               eapply ascend_new_heap; eauto.
+                               eapply trans_chase. constructor. subst t. reflexivity.
+                               apply self_ascent; arrays h h'; eauto.
+    (* originally trans *)
+    induction (fin_dec _ x i).
+        subst x.
+        induction (fin_dec _ y i). subst y.
+          apply self_ascent; arrays h h'. rewrite H1. reflexivity.
+        
+        apply trans_ascent with (t:=y); arrays h h'; eauto. rewrite H1. reflexivity.
+        rewrite H1. rewrite H8. simpl. 
+        induction H4. eauto with arith. destruct H4; subst xr'; reflexivity.
+        eapply union_identity. Focus 2. rewrite H1. reflexivity.
+          intuition. simpl. eapply ascend_new_heap; eauto.
+          simpl. constructor. intuition.
+
+    apply trans_ascent with (t:=t); arrays h h'; eauto.
+        induction (fin_dec _ x t); try subst x; arrays h h'.
+        rewrite H1. rewrite H5 in H11. etransitivity; eauto.
 (*
       rewrite immutable_vals with (h' := h') in H1.
       
