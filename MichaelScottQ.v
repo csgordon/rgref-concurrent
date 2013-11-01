@@ -297,10 +297,13 @@ Next Obligation. (* deltaNode *)
   eapply node_append.
   (**  Need to prove the null-ness is preserved... which is only true if ¬(s≡best_tl). *)
   assert (~ (s ≡ best_tl)). apply H3. left. compute. intros. 
-    (* Trickier now that LinAlloc is rely local_imm... but the append case disproves *) admit.
-    (*apply (H6 (mkNode 3 None) (mkNode 3 None) h h). 
-  apply H5. constructor.*)
+      assert (mkNode 3 None = mkNode 3 (Some s)).
+          eapply H6. apply H5. eapply node_append; eauto.
+      assert (Hbad := node_inj _ _ _ _ H7).
+      destruct Hbad. inversion H9.
   rewrite non_ptr_eq_based_nonaliasing; eauto.
+  Grab Existential Variables.
+  exact h.
 Qed.  
 Next Obligation. (* a Set.... probably from field read folding... *) 
   exact (res (T := Node)).
