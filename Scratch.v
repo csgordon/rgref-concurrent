@@ -11,9 +11,9 @@ Definition inc_spec : spec monotonic_counter := (λ c h h', increasing (h[c]) (h
 Definition localize {T P R G} (R':hrel T) (r:ref{T|P}[R,G]) : relation heap :=
   λ h h', R' (h[r]) (h'[r]) h h'.
 Infix "@" := (localize) (at level 35).
-Definition observe {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap :=
+Definition witness {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap :=
   λ h h', h=h' /\ P' (h[r]) h.
-Definition assert {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap := observe P' r.
+Definition assert {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap := witness P' r.
 
 
 Module WithRawRelations.
@@ -328,7 +328,7 @@ Qed.
 
 Example read_ctr_spec (c:monotonic_counter) :=
   (remote (increasing@c))~~>
-  (ζ v => (local (observe (λ x h, x=v) c)~~>(remote (increasing@c))~~>(result v))).
+  (ζ v => (local (witness (λ x h, x=v) c)~~>(remote (increasing@c))~~>(result v))).
 
 Definition pop_op n x hd' (h h':heap) := exists (hd:ref{Node|any}[local_imm,local_imm]),
                                                   x=(Some hd) /\ (h[hd])=(mkNode n hd').

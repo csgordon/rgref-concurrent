@@ -119,6 +119,22 @@ Qed.
 (* Impure read expression (using a direct ref value) *)
 Program Axiom read_imp : forall {Δ}{A B:Set}`{rel_fold A}{P R G}`{hreflexive G}`{rgfold R G = B}(x:ref{A|P}[R,G]), rgref Δ B Δ.
 
+(* Sometimes it's useful to observe a cell to introduce a subsequent refinement *)
+Axiom read_refine : forall {Γ Γ' T P R G B X}
+                           `{readable_at T R G}
+                           (fld : res = B)
+                      (r:ref{T|P}[R,G])
+                      (P' : B -> hpred T) , (** TODO: Do we need to constrain how the B is used? *)
+                      (forall h b, P' (asB fld (dofold b)) b h) ->
+                      (forall t, stable (P' t) R) ->
+                      (forall t, (forall h, P' t (h[r]) h) -> 
+                                 rgref Γ X Γ') ->
+                      rgref Γ X Γ'.
+Notation "'observe' r 'as' x , pf 'in' P ';' m" :=
+  (@read_refine _ _ _ _ _ _ _ _ _ _ r (fun x => P) _ _ (fun x pf => m))
+    (at level 65).
+
+
 (* Writing with an impure source expression (and direct ref value) *)
 Program Axiom write_imp_exp : forall {Δ Δ'}{A:Set}{P R G}`{readable_at A R G}`{hreflexive G}(x:ref{A|P}[R,G])(e:rgref Δ A Δ')
 (* TODO: These Δs are ordered wrong...*)(meta_x:rgref Δ A Δ') (meta_e:rgref Δ A Δ')

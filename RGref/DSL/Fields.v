@@ -53,6 +53,30 @@ Axiom field_projection_commutes' :
       @eq Res (@getF T F _ f _ _ (h[r]))
               (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
 
+(* TODO: these may not work so well for types w/ multiple fields of same type, e.g. 2 nat fields *)
+Notation "'field_inj1' ctor" := (forall x, x = ctor (getF x)) (at level 30).
+Notation "'field_inj2' ctor" := (forall x, x = ctor (getF x) (getF x)) (at level 30).
+Notation "'field_inj3' ctor" := (forall x, x = ctor (getF x) (getF x) (getF x)) (at level 30).
+Notation "'field_inj4' ctor" := (forall x, x = ctor (getF x) (getF x) (getF x) (getF x)) (at level 30).
+Ltac prove_field_injection :=
+  intros;
+  match goal with
+  | [ |- ?x = ?ctor_app ] => destruct x; reflexivity
+  end.
+
+Axiom field_read_refine : forall {Γ Γ' T P R G}{B X F F' : Set}`{readable_at T R G} (fld:res=B)
+                                 (r:ref{T|P}[R,G])(f:F)
+                                 `{FieldType B F f F'}
+                                 (P' : F' -> hpred T),
+                            (forall h b, P' (getF (asB fld (dofold b))) b h) ->
+                            (forall t, stable (P' t) R) ->
+                            (forall t, (forall h, P' t (h[r]) h) ->
+                                       rgref Γ X Γ') ->
+                            rgref Γ X Γ'.
+Notation "'observe-field' r --> f 'as' x , pf 'in' P ';' m" :=
+  (@field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ r f _ _ (fun x => P) _ _ (fun x pf => m))
+    (at level 65).
+
 
 Section FieldDemo.
 

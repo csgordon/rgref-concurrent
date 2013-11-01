@@ -20,6 +20,17 @@ Global Instance node_fold R G : readable_at Node R G :=
   { res := Node ;
     dofold := fun x => x
   }.
+Require Import RGref.DSL.Fields.
+Inductive nd_fields : Set := val | nxt.
+Instance node_field_type : FieldTyping Node nd_fields.
+Instance nxt_type : FieldType Node nd_fields nxt (option (ref{Node|any}[local_imm,local_imm])) :=
+{ getF := fun x => match x with (mkNode v tl) => tl end;
+  setF := fun x val => match x with (mkNode v tl) => mkNode v val end
+}.
+Instance val_type : FieldType Node nd_fields val nat :=
+{ getF := fun x => match x with (mkNode v tl) => v end;
+  setF := fun x val => match x with mkNode v tl => mkNode val tl end
+}.
 
 (** We'll follow roughly S11.2 of The Art of Multiprocessor Programming:
     a basic Trieber stack, with no backoff or elimination. *)
@@ -83,14 +94,7 @@ Next Obligation. (* Guarantee satisfaction! *)
 Qed.
 
 (** *** Pop operation *)
-Require Import RGref.DSL.Fields.
-Inductive nd_fields : Set := val | nxt.
-Instance node_field_type : FieldTyping Node nd_fields.
-Instance nxt_type : FieldType Node nd_fields nxt (option (ref{Node|any}[local_imm,local_imm])) :=
-{ getF := fun x => match x with (mkNode v tl) => tl end;
-  setF := fun x val => match x with (mkNode v tl) => mkNode v val end
-}.
-Check @getF.
+
 Require Import Utf8.
 Axiom stable_option_match :
   forall Γ T Γ' A P R G (r:ref{A|P}[R,G]) F f (FT:FieldTyping A F) 
@@ -109,16 +113,22 @@ Notation "'fmatch' r ≫ f 'fwith' | 'None' [[ Pn ]] ==> N | 'Some' x [[ Ps ]] =
                        (fun x r' requiv => S))
     (at level 44).
 
-Local Obligation Tactic := intros; compute; eauto.
+Local Obligation Tactic := intros; compute; try subst; intuition; eauto with typeclass_instances.
 Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec s =>
     match !s with
     | None => rgret None
-    | Some hd => match !hd with
+    | Some hd => 
+                 observe-field hd --> val as n, pf in (fun a h => @eq nat (getF a) n);
+                 (* making the @eq type explicit causes 5 more goals to be auto solved! *)
+                 observe-field hd --> nxt as tl', pf' in (fun a h => @eq (option _) (getF a) tl');
+                 success <- CAS(s,Some hd,tl');
+                 if success then rgret (Some n) else rec s
+                 (*match !hd with
                    | mkNode n tl => 
                        success <- CAS(s,Some hd,tl);
                        if success then rgret (Some n) else rec s
-                 end
+                 end*)
                  (*fmatch hd ≫ nxt fwith (* Of course, we don't actually want to match on tl here... *)
                   | None [[ any ]] ==> rgret None
                   | Some tl [[ (λ x v h, getF v = Some x) ]] ==> 
@@ -126,32 +136,24 @@ Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
                          if success then rgret (Some _) else rec s)
                   end*)
     end).
-Next Obligation.
+Next Obligation. (* options equivalent... *)
   f_equal. intros. rewrite H. reflexivity.
   eapply (rgref_exchange); try solve[compute; eauto].
   split; red; intros. simpl in H. destruct H. eauto.
   split; eauto. intros. constructor.
 Defined.
+Next Obligation. (* refining hd stability *)
+  intros. subst. auto.
+Defined.
+Next Obligation. (* refining hd stability *)
+  intros. subst. auto.
+Defined.
 Next Obligation. (** Guarantee Satisfaction *)
-  (** This code is a bit awkward because Coq doesn't have quite the support we need
-      to rework binding appropriately.  We're working atomically here with two assertions
-      about the equality of a value and a dereference expression.  Really, these
-      matches should not see the equality proofs, but should turn the instantaneous
-      property into a stable one, and work with the stable assumption.
+  clear Heq_anonymous. (* spurious - and dangerous - extra assumption from Program extension *)
+  eapply ts_pop. 
+  assert (field_inj : forall nd, nd = mkNode (getF nd) (getF nd)).
+      intros. destruct nd. reflexivity.
+  rewrite (field_inj (h[hd])). rewrite pf. rewrite pf'. reflexivity.
+Qed.
 
-      In this case, !s = Some hd isn't needed (h[s] = Some hd) is intro'd by CAS.
-      !hd = mkNode n tl legitimately implies h[hd] = mkNode n tl (for all h) because
-      hd's rely and guarantee are local_imm.
-
-      First thing we'll do is clean up these context issues.
-   *)
-  subst filtered_var. subst filtered_var0. 
-  assert (forall T P R G (r:ref{T|P}[R,G]) B {rf:readable_at T R G} rpf (epf:res=B), deref rpf epf r = asB epf (dofold (h[r]))) by admit. (*OK*)
-  erewrite H0 in Heq_anonymous0. unfold pop_ts_obligation_4 in *. simpl in Heq_anonymous0.
-  clear Heq_anonymous.
-  clear H0.
-  (** Now with the context matching a proper implementation of refining matches... *)
-  Set Printing Implicit. idtac.
-  fold (@local_imm Node). fold (@any Node). fold (@any (option (ref{Node|any}[local_imm,local_imm]))).
-  eapply ts_pop. eauto.
-Qed. 
+ 
