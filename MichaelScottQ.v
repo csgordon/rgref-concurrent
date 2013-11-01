@@ -40,7 +40,21 @@ Axiom compute_node_rect : forall T B x tl, Node_rect T B (mkNode x tl) = B x tl.
 Axiom Node_heap_rect : forall h (P:Node->Type), (forall n, P (mkNode n None)) ->
                                                      (forall n r, P (h[r]) -> P (mkNode n (Some r))) ->
                                                      forall n, P n.
-                                                   
+(** ** Field map for the M&S Queue *)
+Require Import RGref.DSL.Fields.
+
+Inductive NFields : Set := val | next.
+Instance nfields : FieldTyping Node NFields.
+Instance nfield_val : FieldType Node NFields val nat := {
+    (*getF := fun v => match v with (mkNode x tl) => x end;*)
+    getF := Node_rec (fun x tl => x);
+    (*setF := fun v fv => match v with (mkNode x tl) => mkNode fv tl end*)
+    setF := fun n v => Node_rec (fun x tl => mkNode v tl) n
+}.
+Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[deltaNode,deltaNode])) := {
+    getF := Node_rec (fun x tl => tl);
+    setF := fun v fv => Node_rec (fun x tl => mkNode x fv) v
+}.
 
 (** ** General properties of node definitions *)
 Inductive msq_reach : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (a:Node), Prop :=
@@ -186,52 +200,66 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec q =>
     match !q with
     | mkMSQ sent =>
-      Node_rect (fun _ => _)
-                (fun x o => match o return (!sent=mkNode x o) -> rgref Γ (option nat) Γ with
-                           | None => fun _ => rgret None
-                           | Some hd => fun _ =>
-                                 Node_rect (fun _ => _)
-                                           (fun n tl => success <- CAS(q,mkMSQ sent,mkMSQ hd);
-                                                       if success then rgret (Some n) else rec q) (!hd)
-                           end _) (!sent)
+      observe-field sent --> val as x, pf in (fun a h => @eq nat (getF a) x);
+      observe-field sent --> next as o, pf' 
+          in (fun a h => match o with
+                         | None => True 
+                         | Some hd => @eq (option _) (getF a) (Some hd) end);
+      match o with
+      | None => rgret None
+      | Some hd => 
+            n <- rgret (hd ~> val);
+            success <- CAS(q,mkMSQ sent,mkMSQ hd);
+            if success then rgret (Some n) else rec q
+      end
     end) q.
+Next Obligation. (** stable refinement *)
+  simpl. red. intuition. subst.
+  destruct delta_eq. assert (H' := H _ _ _ _ H0).
+  induction H'; eauto. unfold Node_rec. repeat rewrite compute_node_rect.
+  reflexivity.
+Qed.
+Next Obligation. (* tail refinement true *)
+  unfold dq_msq_obligation_6 in *. 
+  subst program_branch_0.
+  subst program_branch_1.
+  Check @getF.
+  assert (opt_ind : forall T (o:option T), {o = None} + {exists t, o = Some t}).
+      intros. induction o; intuition. right. eexists; eauto.
+
+  induction (opt_ind _ (getF (T:=Node) (@asB Node _ _ Node nd_fold eq_refl (@dofold _ _ _ nd_fold b)))).
+  Set Printing Implicit. idtac.
+  unfold res in *. unfold nd_fold at 2 in a. unfold id_fold in *.
+  rewrite a.
+  Unset Printing Implicit. idtac.
+  tauto.
+  destruct b0. 
+  Set Printing Implicit. idtac.
+  unfold res in *. unfold nd_fold at 2 in H. unfold id_fold in *.
+  rewrite H.
+  compute in *. rewrite H. reflexivity.
+Qed.
+Next Obligation. (* tail obs stability *)
+  red. intros.
+  destruct delta_eq.
+  assert ( Htp := H1 _ _ _ _ H0).
+  induction t; auto.
+  induction Htp; eauto.
+  simpl in H. compute in H. rewrite compute_node_rect in *.
+  inversion H.
+Qed.
 Next Obligation. (** δmsq guarantee proof *)
-  apply msq_dequeue with (n := x). subst hd0.
-  (** As in the Trieber Stack, we're working around lacking a dereference-pattern-match
-      construct that introduces new stable assumptions based on observations.
-      The combination of observing the value for h[sent] (fixed by deltaNode) and
-      observing that the tail pointer of the node is set (a Some tail is fixed by deltaNode)
-      gives us that h[sent] = mkNode x (Some hd), rather than the !sent=... stuff the
-      Program extension is exporting.
-
-      First up: fix up the context for what a proper construct would produce.
-  *)
-  assert (@deref Node _ _ _ _ _  delta_refl eq_refl sent = dofold (h[sent])) by admit. (*OK*)
-  simpl in H1. compute in H1. compute in H. rewrite H1 in H. (* Fix (un)folding in implicit args *)
-  subst filtered_var. clear Heq_anonymous. clear H1.
-  (** And if the context had been correct to begin with, this would have been almost automatically
-      solved, possibly by merging two separate refinements of h[sent]. *)
-  auto.
+  apply msq_dequeue with (n := x). subst o.
+  assert (node_inj : forall nd, nd = mkNode (getF nd) (getF nd)).
+      intros. simpl. unfold Node_rec. 
+      assert (H' := destruct_node nd). 
+      destruct H'. destruct H0. rewrite H0.
+      repeat rewrite compute_node_rect.
+      reflexivity.
+  rewrite (node_inj (h[sent])).
+  rewrite pf. rewrite pf'.
+  reflexivity.
 Qed.
-Next Obligation.
-  (** TODO: This is a hack for a match+refine. Need to fix up induction principle or hack syntax for this to work right. *) admit. (*OK*)
-Qed.
-
-(** ** Field map for the M&S Queue *)
-Require Import RGref.DSL.Fields.
-
-Inductive NFields : Set := val | next.
-Instance nfields : FieldTyping Node NFields.
-Instance nfield_val : FieldType Node NFields val nat := {
-    (*getF := fun v => match v with (mkNode x tl) => x end;*)
-    getF := Node_rec (fun x tl => x);
-    (*setF := fun v fv => match v with (mkNode x tl) => mkNode fv tl end*)
-    setF := fun n v => Node_rec (fun x tl => mkNode v tl) n
-}.
-Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[deltaNode,deltaNode])) := {
-    getF := Node_rec (fun x tl => tl);
-    setF := fun v fv => Node_rec (fun x tl => mkNode x fv) v
-}.
 
 (** ** M&S Queue Operations *)
 (** TODO: fCAS and CAS need to enforce Safe on the expressions *)
