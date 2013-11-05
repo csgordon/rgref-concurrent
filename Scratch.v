@@ -15,64 +15,6 @@ Definition witness {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap :=
   λ h h', h=h' /\ P' (h[r]) h.
 Definition assert {T P R G} (P':hpred T) (r:ref{T|P}[R,G]) : relation heap := witness P' r.
 
-
-Module WithRawRelations.
-  Definition rseq {A:Set} (R1 R2 : relation A) : relation A :=
-    λ h h', exists h'', R1 h h'' /\ R2 h'' h'.
-  Infix "⋆" := (rseq) (at level 39, right associativity).
-  Lemma check_rseq_assoc : forall (A B C:relation heap), A ⋆ B ⋆ C = rseq A (rseq B C).
-  Proof. intuition. Qed.
-
-
-  Check same_relation.
-  Lemma inc_spec_localized : forall c, same_relation heap (inc_spec c) (increasing@c).
-  Proof. intros; intuition. Qed.
-  
-  Check clos_refl_trans.
-  Notation "R *" := (clos_refl_trans heap R) (at level 34).
-  
-  Definition example_inc_trace (c:monotonic_counter) : relation heap :=
-    (havoc@c)⋆((clos_refl_trans heap eq)⋆(havoc@c))*⋆(increasing@c)⋆(havoc@c).
-  
-  Lemma seq_assoc : forall (Q R S:relation heap) h h', (Q⋆R⋆S) h h' <-> ((Q⋆R)⋆S) h h'.
-  Proof.
-    intros. unfold rseq. split; intros; intuition.
-    destruct H. destruct H. destruct H0. destruct H0. repeat (eexists; intuition; eauto).
-    destruct H. destruct H. destruct H. destruct H. repeat (eexists; intuition; eauto).
-  Qed.
-  Inductive refines : relation heap -> relation heap -> Prop :=
-  | refine_refl : forall R, refines R R
-  | refine_left : forall Q Q' R, refines Q Q' -> refines (Q⋆R) (Q'⋆R)
-  | refine_right : forall Q R R', refines R R' -> refines (Q⋆R) (Q⋆R')
-  | refine_merge_passive_l : forall Q, refines (Q⋆(clos_refl_trans heap eq)) Q
-  | refine_merge_passive_r : forall Q, refines ((clos_refl_trans heap eq)⋆Q) Q
-  | refine_reassoc : forall Q R S, refines (Q⋆R⋆S) ((Q⋆R)⋆S)
-  | refine_trans : forall Q R S, refines Q R -> refines R S -> refines Q S
-  | refine_clos : forall Q R, refines Q R -> refines (Q* ) (R* )
-  (* These rules are a little sketchy: they should really only be applied to remote actions...
-     but there's nothing in the current representation from applying them to ellide intermediate
-     writes by a non-linearizable implementation... *)
-  | refine_idemp_clos : forall Q, inclusion _ (Q* ) Q -> refines (Q* ) Q
-  | refine_havoc_l : forall T P R G (l:ref{T|P}[R,G]) Q, refines (havoc@l⋆Q) Q
-  | refine_havoc_r : forall T P R G (l:ref{T|P}[R,G]) Q, refines (Q⋆havoc@l) Q
-  .
-  Infix "≪" := (refines) (at level 63).
-
-  Lemma inc_valid : forall c, example_inc_trace c ≪ (havoc@c)⋆(inc_spec c)⋆(havoc@c).
-  Proof.
-    intros. unfold example_inc_trace.
-    repeat constructor.
-    eapply refine_trans.
-    eapply refine_reassoc.
-    apply refine_left.
-    eapply refine_trans. apply refine_left. apply refine_clos. apply refine_merge_passive_r.
-    eapply refine_trans. apply refine_left. apply refine_idemp_clos. compute; auto.
-    apply refine_havoc_l.
-  Qed.
-End WithRawRelations.
-  (* So this approach is generally feasible, but we'll need to distinguish local and remote actions;
-   remote havoc* refines remote havoc, local havoc* (totally non-lin) doesn't refine local havoc (atomic blocK)
-   *)
 Inductive action : Prop :=
   | act_id : action
   | act_remote : relation heap -> action
@@ -278,6 +220,7 @@ Qed.
 *)
 
 
+Module TreiberRefinements.
 Require Import TrieberStack.
 Definition push_op n (o o':option (ref{Node|any}[local_imm,local_imm])) (h h':heap) : Prop :=
   exists hd, exists hd', h'[hd']=(mkNode n hd) /\ o=hd /\ o'=(Some hd').
@@ -325,6 +268,7 @@ Proof.
   clear push_refine. admit.
   etransitivity. apply refine_drop_tail. reflexivity.
 Qed.
+End TreiberRefinements.
 
 Example read_ctr_spec (c:monotonic_counter) :=
   (remote (increasing@c))~~>
@@ -364,6 +308,7 @@ Proof.
   apply refine_bind_b. intros. repeat constructor.
 Qed.
 (* TODO: Should ζ / bind use existential instead of universal? *)
+
   
 Require Import RGref.DSL.Fields.
 Class HindsightField (A:Set){F:Set}`{ImmediateReachability A}`{FieldTyping A F} :=
