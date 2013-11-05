@@ -88,6 +88,7 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
   Definition valOfE (e:E) : ⊠ := E_rect (fun _ => ⊠) (fun n m tl => n) e.
   Definition markedOfE (e:E) : bool := E_rect (fun _ => bool) (fun n m tl => m) e.
   Definition nextOfE (e:E) := E_rect (fun _ => _) (fun n m tl => tl) e.
+  Axiom mkE_closed : forall e, e = mkE (valOfE e) (markedOfE e) (nextOfE e).
 
   Inductive F : Set := data | mark | nxt.
   Instance hs_node_fields : FieldTyping E F.
@@ -317,25 +318,36 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
   Print opt_coerce.
     
   Check @convert_P.
+  Inductive hlb_fields := head | tail.
+  Instance hlb_fielding : FieldTyping HindsightListBlock hlb_fields.
+  Instance hlb_head : FieldType HindsightListBlock hlb_fields head (ref{E|(invE ⊓ head_props)}[deltaE,deltaE]) :=
+  { getF := fun b => match b with mkHLB hd tl => hd end;
+    setF := fun b v' => match b with mkHLB hd tl => mkHLB v' tl end }.
+  Instance hlb_tail : FieldType HindsightListBlock hlb_fields tail (ref{E|(invE ⊓ tail_props)}[deltaE,deltaE]) :=
+  { getF := fun b => match b with mkHLB hd tl => tl end;
+    setF := fun b v' => match b with mkHLB hd tl => mkHLB hd v' end }.
+  Check @getF.
+  Print getF.
   Program Definition locate {Γ} (l:hindsight_list) (k:⊠) : rgref Γ (eptr * eptr) Γ :=
-    match !l with
-      | mkHLB H T =>
-        E_rect' (!H) (fun _ => rgref Γ (eptr * eptr) Γ)
-               (fun n m next pf => match next with
-                                    | None => False_rect _ _ (* TODO: Contradiction *)
-                                    | Some tl =>
-                                      RGFix _ _
-                                            (fun rec x =>
-                                               match x with
-                                               | (p, c) => if ((c ~> data) ≪≪ k)
-                                                           then rec (c, opt_coerce (c ~> nxt) _) (* k ≪≪ ∞ so not None *)
-                                                           else rgret (p, c)
-                                               end
-                                            )
-                                            ((@convert_P _ _ invE _ _ _ _ _ _ H), tl)
-                                  end)
-    end
+    observe-field l --> head as H, pH in (λ a h, (getF (FieldType:=hlb_head) a) = H);
+    observe-field l --> tail as T, pT in (λ a h, (getF (FieldType:=hlb_tail) a) = T);
+    E_rect' (!H) (fun _ => rgref Γ (eptr * eptr) Γ)
+           (fun n m next pf => match next with
+                                | None => False_rect _ _ (* TODO: Contradiction *)
+                                | Some tl =>
+                                  RGFix _ _
+                                        (fun rec x =>
+                                           match x with
+                                           | (p, c) => if ((c ~> data) ≪≪ k)
+                                                       then rec (c, opt_coerce (c ~> nxt) _) (* k ≪≪ ∞ so not None *)
+                                                       else rgret (p, c)
+                                           end
+                                        )
+                                        ((@convert_P _ _ invE _ _ _ _ _ _ H), tl)
+                              end)
   .
+  Next Obligation. compute; intuition; subst; eauto. Qed.
+  Next Obligation. compute; intuition; subst; eauto. Qed.
   Next Obligation. (* Now with tie b/t ! and some heap, can invalidate the None using head_props *) Admitted.
   Next Obligation. (* Need refining observation that c~>data ≪≪ k, and since k ≪≪ ∞, next is non-null *) Admitted.
   Next Obligation. eapply pred_and_proj1; eauto. Qed.
@@ -455,7 +467,8 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
   Next Obligation. (* deltaE proof for the write *)
     assert (deltaE' ⊆ deltaE). fixdefs. firstorder. apply H0. clear H0.
     destruct H4. rewrite H3.
-    assert (h[e] = mkE (valOfE (h[e])) (markedOfE (h[e])) (nextOfE (h[e]))). admit. (* TODO: closed ctor axiom *)
+    assert (h[e] = mkE (valOfE (h[e])) (markedOfE (h[e])) (nextOfE (h[e]))).
+        rewrite (mkE_closed (h[e])) at 1. reflexivity.
     rewrite H2 in H4. rewrite H3 in H4. rewrite H4.
     unfold valOfE. unfold markedOfE. unfold nextOfE. repeat rewrite E_rect_red. 
     eapply deltaE_insert; rewrite H4; rewrite E_rect_red.
