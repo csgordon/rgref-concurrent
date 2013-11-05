@@ -268,7 +268,6 @@ Proof.
   clear push_refine. admit.
   etransitivity. apply refine_drop_tail. reflexivity.
 Qed.
-End TreiberRefinements.
 
 Example read_ctr_spec (c:monotonic_counter) :=
   (remote (increasing@c))~~>
@@ -308,6 +307,7 @@ Proof.
   apply refine_bind_b. intros. repeat constructor.
 Qed.
 (* TODO: Should ζ / bind use existential instead of universal? *)
+End TreiberRefinements.
 
   
 Require Import RGref.DSL.Fields.
