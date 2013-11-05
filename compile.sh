@@ -6,7 +6,7 @@ export EXAMPLES="AppendOnlyLinkedList.v MonotonicCounter.v PrependOnlyPureList.v
                  CounterModule.v RCC.v ReferenceImmutability.v IndIndLinkedList.v"
 export CONC_EXAMPLES="AtomicCounter.v TrieberStack.v MichaelScottQ.v Hindsight.v UnionFind.v"
 export BUGS="KnownUnsoundnessExamples.v"
-export TMP="Scratch.v"
+export TMP="Tracing.v"
 coq_makefile -R RGref RGref $TMP $AUX $CORE $EXAMPLES $CONC_EXAMPLES $BUGS > Makefile
 touch .depend
 make depend
