@@ -76,6 +76,9 @@ Axiom field_read_refine : forall {Γ Γ' T P R G}{B X F F' : Set}`{readable_at T
 Notation "'observe-field' r --> f 'as' x , pf 'in' P ';' m" :=
   (@field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ r f _ _ (fun x => P) _ _ (fun x pf => m))
     (at level 65).
+Notation "'observe-field-explicit' FT 'for' r --> f 'as' x , pf 'in' P ';' m" :=
+  (@field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ r f _ FT (fun x => P) _ _ (fun x pf => m))
+    (at level 65).
 
 
 Section FieldDemo.

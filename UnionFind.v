@@ -82,13 +82,6 @@ Inductive δ (n:nat) : hrel (uf n) :=
                   δ n A (array_write A x c) h h'
 .
 
-(* TODO: This is no longer true in the base case... 
-Lemma chase_step : forall n x h f i, chase n x h f i -> forall j, getF (h[x<|f|>]) = j -> chase n x h j i.
-Proof.
-  intros. induction H.
-  rewrite H0 in *. subst. constructor; auto.
-  rewrite H0 in *. subst t. assumption.
-Qed.*)
 Lemma chase_rank' : forall n h x i j t,
                       terminating_ascent n x h i ->
                       getF (h[x<|i|>]) = t ->
@@ -890,6 +883,13 @@ Definition ignore {Γ Γ' T} (C:rgref Γ T Γ') : rgref Γ unit Γ' :=
   _ <- C;
   rgret tt.
 (** *** Union operation *)
+Check @getF.
+(** Coq is bad at automatically unfolding uf to an Array, so we give it a hint *)
+Global Instance uf_fields {n:nat} : FieldTyping (uf n) (fin _) := array_fields.
+Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _) f (ref{_|_}[_,_]) :=
+  array_field_index.
+Check @field_read_refine.
+Check fielding.
 Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S n)) : rgref Γ unit Γ :=
   RGFix _ _ (fun TryAgain _ =>
                x <- Find r x;
@@ -897,6 +897,11 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                if (fin_beq x y)
                then rgret tt
                else (
+                   observe-field r --> x as oldx, pfx in (λ A h, getF (h[(array_read A x)]) ≥ getF (h[oldx]));
+                   observe-field r --> y as oldy, pfy in (λ A h, getF (h[(A<|y|>)]) ≥ getF (h[oldy]));
+                   (*_ <- @field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ oldx rank (@fielding n) _ _ _ _ _;*)
+                   (*_ <- field_read_refine (X:=nat)(H0:=@fielding _) _ oldx rank _ _ _ _ ;*)
+                   observe-field-explicit (@cell_rank (S n)) for oldx --> rank as rankx, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c ≥ rankx);
                    (** TODO: revisit for non-atomic multiple reads, sequencing *)
                    (** TODO: Should be be reading from x' and y' here instead of x and y??? *)
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
@@ -933,6 +938,45 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
 (** Proof obligations for UpdateRoot calls *)
   (*assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
                     (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)).*)
+Next Obligation.  (* TODO: Pull out as lemma *)
+  compute; intuition; eauto.
+  induction H1.
+    induction (fin_dec _ f x0).
+      subst x0; arrays h h'. compute in H2. rewrite <- H2. eauto.
+      arrays h h'; compute in H2; eauto.
+    induction (fin_dec _ x1 x0).
+      subst x0; arrays h h'. etransitivity; eauto. 
+          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
+            rewrite H1. rewrite H2. compute. eauto.
+         unfold getF in H6. unfold cell_rank in H6. assumption.
+      arrays h h'; compute in H2; eauto.
+    induction (fin_dec _ x1 x0).
+      subst x0; arrays h h'. etransitivity; eauto. 
+          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
+            rewrite H1. rewrite H3. compute. eauto.
+         unfold getF in H4. unfold cell_rank in H4. assumption.
+      arrays h h'; compute in H2; eauto.
+Qed.  
+Next Obligation. 
+  compute; intuition; eauto.
+  induction H1.
+    induction (fin_dec _ f y0).
+      subst y0; arrays h h'. compute in H2. rewrite <- H2. eauto.
+      arrays h h'; compute in H2; eauto.
+    induction (fin_dec _ x1 y0).
+      subst y0; arrays h h'. etransitivity; eauto. 
+          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
+            rewrite H1. rewrite H2. compute. eauto.
+         unfold getF in H6. unfold cell_rank in H6. assumption.
+      arrays h h'; compute in H2; eauto.
+    induction (fin_dec _ x1 y0).
+      subst y0; arrays h h'. etransitivity; eauto. 
+          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
+            rewrite H1. rewrite H3. compute. eauto.
+         unfold getF in H4. unfold cell_rank in H4. assumption.
+      arrays h h'; compute in H2; eauto.
+Qed.
+Next Obligation. compute; intuition; subst; eauto. Qed.
 Next Obligation. 
     Set Printing Notations. idtac.
     Require Import Coq.Bool.Bool.
