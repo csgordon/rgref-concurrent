@@ -303,6 +303,17 @@ Proof.
       eapply trans_ascent; eauto.
 Qed.
 
+Lemma no_chase_extend : forall n x h s m,
+                          chase n x h s m ->
+                          forall f, ~ chase n x h s f ->
+                          ~ chase n x h m f.
+Proof.
+  intros n x h s m H.
+  induction H. tauto.
+  intros.
+  apply IHchase. intro.
+  apply H1. eapply trans_chase. eassumption. eauto.
+Qed.
 
 Lemma union_identity : forall n x h f y (c:ref{cell n|any}[local_imm,local_imm]),
                          f≠y -> getF(h[c])=y -> 
@@ -311,14 +322,30 @@ Lemma union_identity : forall n x h f y (c:ref{cell n|any}[local_imm,local_imm])
                                     terminating_ascent n (array_write x f c) h y'.
 Proof.
   intros n x h f y c. intro. intro. intro.
+
+  cut (~ chase n x h y f).
+  intros Hchase.
+  clear H0. assert (H0 : True) by tauto.
+  cut (getF(h[x<|f|>]) = f).
+  intros Hupdate_root.
   
-  revert H0.
   induction H1.
   (* self *) intros. induction H2. apply self_ascent; arrays h h'; eauto.
              assert (i = t) by congruence. rewrite H5 in *. firstorder.
   (* trans *)
   intros. 
   induction H4.
+    induction (fin_dec _ f t). rewrite a in *.
+    exfalso. apply Hchase. eapply trans_chase; try constructor; eauto.
+    apply trans_ascent with (t:=t); arrays h h'.
+    apply IHterminating_ascent; eauto.
+    eapply no_chase_extend; eauto. eapply trans_chase; try solve[symmetry;eassumption]. constructor.
+  constructor.
+  unfold fin in *. assert (t = t0) by congruence. rewrite H7 in *. clear dependent t.
+  assert (f ≠ t0). intro Hbad. rewrite Hbad in *. exfalso. apply Hchase. eapply trans_chase. constructor. symmetry; eauto.
+  apply IHterminating_ascent; eauto.
+  eapply no_chase_extend; try eassumption. eapply trans_chase; try solve[symmetry;eassumption]. constructor.
+  (* And now we're at the cuts that should become hypotheses... *)
 Admitted.
 
 Require Import Coq.Arith.Lt.
