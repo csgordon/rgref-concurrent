@@ -890,6 +890,31 @@ Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _
   array_field_index.
 Check @field_read_refine.
 Check fielding.
+Lemma uf_cell_increasing_rank :
+   ∀ n x0,
+   ∀ t : ref{cell (S n) | any }[ local_imm, local_imm],
+            stable
+              (λ (A : uf (S n)) (h : heap),
+               getF (h [A <| x0 |>]) ≥ getF (h [t])) 
+              (δ (S n)).
+Proof.
+  compute; intuition; eauto.
+  induction H0;
+  match goal with
+  | [ |- context[array_read (array_write ?x ?f ?c) ?x0] ] => induction (fin_dec _ f x0)
+  end; try subst x0; arrays h h'; eauto.
+  compute in H1; rewrite <- H1; eauto.
+  assert (getF (h'[A<|x|>]) ≤ getF (h'[c])).
+     rewrite H1. rewrite H0. compute. eauto.
+  unfold getF in H5. unfold cell_rank in H5.
+  etransitivity; eauto.
+  assert (getF (h'[A<|x|>]) ≤ getF (h'[c])).
+     rewrite H2. rewrite H0. compute. eauto.
+  unfold getF in H3. unfold cell_rank in H3.
+  etransitivity; eauto.
+Qed.
+Hint Resolve uf_cell_increasing_rank.
+
 Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S n)) : rgref Γ unit Γ :=
   RGFix _ _ (fun TryAgain _ =>
                x <- Find r x;
@@ -899,9 +924,8 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                else (
                    observe-field r --> x as oldx, pfx in (λ A h, getF (h[(array_read A x)]) ≥ getF (h[oldx]));
                    observe-field r --> y as oldy, pfy in (λ A h, getF (h[(A<|y|>)]) ≥ getF (h[oldy]));
-                   (*_ <- @field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ oldx rank (@fielding n) _ _ _ _ _;*)
-                   (*_ <- field_read_refine (X:=nat)(H0:=@fielding _) _ oldx rank _ _ _ _ ;*)
                    observe-field-explicit (@cell_rank (S n)) for oldx --> rank as rankx, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c ≥ rankx);
+                   observe-field-explicit (@cell_rank (S n)) for oldy --> rank as ranky, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c ≥ ranky);
                    (** TODO: revisit for non-atomic multiple reads, sequencing *)
                    (** TODO: Should be be reading from x' and y' here instead of x and y??? *)
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
@@ -938,44 +962,9 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
 (** Proof obligations for UpdateRoot calls *)
   (*assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
                     (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)).*)
-Next Obligation.  (* TODO: Pull out as lemma *)
-  compute; intuition; eauto.
-  induction H1.
-    induction (fin_dec _ f x0).
-      subst x0; arrays h h'. compute in H2. rewrite <- H2. eauto.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 x0).
-      subst x0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H2. compute. eauto.
-         unfold getF in H6. unfold cell_rank in H6. assumption.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 x0).
-      subst x0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H3. compute. eauto.
-         unfold getF in H4. unfold cell_rank in H4. assumption.
-      arrays h h'; compute in H2; eauto.
-Qed.  
-Next Obligation. 
-  compute; intuition; eauto.
-  induction H1.
-    induction (fin_dec _ f y0).
-      subst y0; arrays h h'. compute in H2. rewrite <- H2. eauto.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 y0).
-      subst y0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H2. compute. eauto.
-         unfold getF in H6. unfold cell_rank in H6. assumption.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 y0).
-      subst y0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H3. compute. eauto.
-         unfold getF in H4. unfold cell_rank in H4. assumption.
-      arrays h h'; compute in H2; eauto.
-Qed.
+Next Obligation.  eapply uf_cell_increasing_rank. Qed.
+Next Obligation.  eapply uf_cell_increasing_rank. Qed.
+Next Obligation. compute; intuition; subst; eauto. Qed.
 Next Obligation. compute; intuition; subst; eauto. Qed.
 Next Obligation. 
     Set Printing Notations. idtac.
