@@ -609,21 +609,15 @@ Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
 (** *** UpdateRoot *)
 Require Import Coq.Arith.Arith.
 Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t (S n)) (oldrank:nat) (y:Fin.t (S n)) (newrank:nat) 
-  (*(pf : {x=y/\newrank>oldrank}+{fin_lt x y=true/\oldrank=newrank})*)
   (pf:forall h, x=y/\newrank>oldrank \/ 
                     (newrank=oldrank/\newrank ≤ getF (f:=rank)(FT:=nat) (h[h[A]<|y|>])
                      /\ (newrank = getF(f:=rank)(FT:=nat)(h[h[A]<|y|>]) -> fin_lt x y = true)))
-  (* TODO TODO TODO TODO: newrank < getF (...) OR (newrank = getf (...) /\ fin_lt x y = true... *)
 : rgref Γ bool Γ :=
-  (*let old := (A ~> x) in*)
   old <- rgret (A ~> x) ;
-  (*
-  if (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
-          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
-*)
-  (* TODO: Should match-refine the old ref before this. *)
-  match (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
-          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank (S n))) (*old~>rank*) oldrank)))
+  observe-field-explicit cell_parent for old --> parent as oparent, pfp in (λ x h, getF x = oparent);
+  observe-field-explicit (@cell_rank (S n)) for old --> rank as orank, pfp in (λ x h, getF x = orank);
+  match (orb (negb (fin_beq oparent (*old ~> parent*) x))
+          (negb (beq_nat orank (*old~>rank*) oldrank)))
   with
   (*then*) |true => rgret false
   (*else*)|false=> (
@@ -633,6 +627,8 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t
   )
   end
 .
+Next Obligation. compute; intros; subst; eauto. Qed.
+Next Obligation. compute; intros; subst; eauto. Qed.
 Next Obligation.
   
   unfold UpdateRoot_obligation_13.
@@ -643,6 +639,8 @@ Next Obligation.
   unfold UpdateRoot_obligation_18.
   unfold UpdateRoot_obligation_19.
   unfold UpdateRoot_obligation_20.
+  unfold UpdateRoot_obligation_21.
+  unfold UpdateRoot_obligation_22.
   assert (H := heap_lookup2 h new).
   destruct H.
   
@@ -662,9 +660,10 @@ Next Obligation.
   (* bump rank *)
   destruct a. subst y.
   apply bump_rank with (xr := oldrank) (xr' := newrank).
-  erewrite <- field_projection_commutes' with (h:=h) in *; eauto.
   Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
   rewrite (cell_ctor_complete _ (h[h[A]<|x|>])). f_equal; eauto.
+  subst. compute [getF cell_rank]. eauto.
+  subst. compute [getF cell_parent]. eauto.
   eauto with arith.
   rewrite <- convert_equiv. eauto.
 
@@ -673,23 +672,15 @@ Next Obligation.
   
   cut (h[ h[A]<|x|>] = mkCell _ oldrank x).
   intro t; apply t.
-  Check field_projection_commutes'.
 
-  (** Is there a granularity / atomicity issue w/ the fields of old?
-      Shouldn't be; old is local_imm, and the ptr is only read once, with
-      equivalence with h[A]<|x|> introduced by the CAS *)
-
-  erewrite <- field_projection_commutes with (h:=h) in H'.
-  erewrite <- field_projection_commutes with (h:=h) in H'''.
-  unfold UpdateRoot_obligation_5 in *.
-  unfold UpdateRoot_obligation_3 in *.
-  simpl eq_rec in *.
   rewrite (cell_ctor_complete _ (h[ _ ])).
   f_equal; eauto.
+  subst. compute [getF cell_rank]. eauto.
+  subst. compute [getF cell_parent]. eauto.
 
   rewrite <- convert_equiv. apply H0. firstorder.
   
-  destruct b. subst oldrank; reflexivity.
+  destruct b. subst oldrank. subst orank. reflexivity.
   reflexivity.
   destruct b.
   destruct H4.
@@ -931,22 +922,6 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                    observe-field r --> y as oldy, pfy in (λ A h, getF (h[(A<|y|>)]) ≥ getF (h[oldy]));
                    observe-field-explicit (@cell_rank (S n)) for oldx --> rank as xr, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c = xr);
                    observe-field-explicit (@cell_rank (S n)) for oldy --> rank as yr, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c = yr);
-                   (*(** TODO: revisit for non-atomic multiple reads, sequencing *)
-                   (** TODO: Should be be reading from x' and y' here instead of x and y??? *)
-                   xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
-                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r x (@array_fields (S n) _) (@array_field_index (S n) _ x))
-                                          rank _ (@cell_rank (S n)));
-                   (** TODO: Should break this up and refine r such that (forall h, h[r<|y|>].rank >= old_y_ptr.rank), which provides
-                       an assumption UpdateRoot needs *)
-                   yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
-                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r y (@array_fields (S n) _) (@array_field_index (S n) _ y))
-                                          rank _ (@cell_rank (S n)));*)
-                   (*_ <-
-                   (if (orb (gt xr yr)
-                           (andb (beq_nat xr yr)
-                                 (gt (to_nat x) (to_nat y))))
-                   then _ (** TODO: Swap(x,y); Swap(xr,yr); <-- Is this updating imperative variables? *)
-                   else rgret tt) ; *)
                    ret <-
                    (match (orb (gt xr yr)
                            (andb (beq_nat xr yr)
@@ -954,7 +929,6 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                    | true => UpdateRoot r y yr x yr _ 
                    | false => UpdateRoot r x xr y xr _ 
                    end);
-                   (*ret <- UpdateRoot r x xr y yr _;*)
                    if ret
                    then TryAgain tt
                    else if (beq_nat xr yr)
