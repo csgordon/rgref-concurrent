@@ -609,7 +609,12 @@ Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
 (** *** UpdateRoot *)
 Require Import Coq.Arith.Arith.
 Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t (S n)) (oldrank:nat) (y:Fin.t (S n)) (newrank:nat) 
-  (pf : {x=y/\newrank>oldrank}+{fin_lt x y=true/\oldrank=newrank}): rgref Γ bool Γ :=
+  (*(pf : {x=y/\newrank>oldrank}+{fin_lt x y=true/\oldrank=newrank})*)
+  (pf:forall h, x=y/\newrank>oldrank \/ 
+                    (newrank=oldrank/\newrank ≤ getF (f:=rank)(FT:=nat) (h[h[A]<|y|>])
+                     /\ (newrank = getF(f:=rank)(FT:=nat)(h[h[A]<|y|>]) -> fin_lt x y = true)))
+  (* TODO TODO TODO TODO: newrank < getF (...) OR (newrank = getf (...) /\ fin_lt x y = true... *)
+: rgref Γ bool Γ :=
   (*let old := (A ~> x) in*)
   old <- rgret (A ~> x) ;
   (*
@@ -653,15 +658,15 @@ Next Obligation.
   assert (H'' := H3 _ H2). assert (H''' := beq_nat_eq _ _ H'').
   clear H3. clear H''.
 
-  induction pf.
+  induction (pf h) as [a | b].
   (* bump rank *)
   destruct a. subst y.
-  apply bump_rank with (xr := oldrank) (xr' := newrank); eauto with arith;
-    try rewrite <- convert_equiv.
+  apply bump_rank with (xr := oldrank) (xr' := newrank).
   erewrite <- field_projection_commutes' with (h:=h) in *; eauto.
   Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
   rewrite (cell_ctor_complete _ (h[h[A]<|x|>])). f_equal; eauto.
-  assert (Htmp := heap_lookup2 h new). destruct Htmp. firstorder.
+  eauto with arith.
+  rewrite <- convert_equiv. eauto.
 
   (* path union *)
   eapply path_union.
@@ -684,17 +689,17 @@ Next Obligation.
 
   rewrite <- convert_equiv. apply H0. firstorder.
   
-  (* TODO: We don't need the fin_lt x y (and at call sites, we can't provide it!
-     information that y's rank is greater than x's should come from elsewhere;
-     ideally from a Program match, but the paper doesn't have one.  It seems to
-     be /stable/ contextual information about y that its rank is >= oldrank,
-     so it should be provided at the call site.  Need to fix the pf arg. *)
   destruct b. subst oldrank; reflexivity.
   reflexivity.
-  assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
-                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)) by admit.
-  induction (H3 h); intuition. 
-  right. intuition. rewrite fin_lt_nat in H6. assumption.
+  destruct b.
+  destruct H4.
+  inversion H4.
+      right. split; try reflexivity. intuition. rewrite fin_lt_nat in *. assumption.
+  left.
+  assert (forall a b c, a ≤ b -> S b = c -> a < c).
+      intros. compute. assert (S a ≤ S b). apply le_n_S; eauto.
+      rewrite H9 in H10. assumption.
+  eapply H8; eauto.
 
 Qed. (* UpdateRoot guarantee (δ n) *)
 
@@ -919,14 +924,14 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
   RGFix _ _ (fun TryAgain _ =>
                x <- Find r x;
                y <- Find r y;
-               if (fin_beq x y)
-               then rgret tt
-               else (
+               match (fin_beq x y) with
+               | true => rgret tt
+               | false => (
                    observe-field r --> x as oldx, pfx in (λ A h, getF (h[(array_read A x)]) ≥ getF (h[oldx]));
                    observe-field r --> y as oldy, pfy in (λ A h, getF (h[(A<|y|>)]) ≥ getF (h[oldy]));
-                   observe-field-explicit (@cell_rank (S n)) for oldx --> rank as rankx, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c ≥ rankx);
-                   observe-field-explicit (@cell_rank (S n)) for oldy --> rank as ranky, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c ≥ ranky);
-                   (** TODO: revisit for non-atomic multiple reads, sequencing *)
+                   observe-field-explicit (@cell_rank (S n)) for oldx --> rank as xr, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c = xr);
+                   observe-field-explicit (@cell_rank (S n)) for oldy --> rank as yr, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c = yr);
+                   (*(** TODO: revisit for non-atomic multiple reads, sequencing *)
                    (** TODO: Should be be reading from x' and y' here instead of x and y??? *)
                    xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r x (@array_fields (S n) _) (@array_field_index (S n) _ x))
@@ -935,7 +940,7 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                        an assumption UpdateRoot needs *)
                    yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
                                           (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r y (@array_fields (S n) _) (@array_field_index (S n) _ y))
-                                          rank _ (@cell_rank (S n)));
+                                          rank _ (@cell_rank (S n)));*)
                    (*_ <-
                    (if (orb (gt xr yr)
                            (andb (beq_nat xr yr)
@@ -957,26 +962,84 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                         else rgret tt
                    
                )
+               end
             )
         tt.
-(** Proof obligations for UpdateRoot calls *)
-  (*assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
-                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)).*)
 Next Obligation.  eapply uf_cell_increasing_rank. Qed.
 Next Obligation.  eapply uf_cell_increasing_rank. Qed.
 Next Obligation. compute; intuition; subst; eauto. Qed.
 Next Obligation. compute; intuition; subst; eauto. Qed.
+Require Import Coq.Bool.Bool.
+Require Import Coq.Arith.Lt.
 Next Obligation. 
-    Set Printing Notations. idtac.
-    Require Import Coq.Bool.Bool.
-    symmetry in Heq_anonymous.
-    right. intuition.
-    (* TODO: trying to make y < x seems wrong; we know the ranks are ordered correctly.  A refine-match on the to-be-parent that its rank is >= a val, and the to-be-child's rank is <= that val, ensures ordering... so this shouldn't be req'd. *) admit.
+  (* patch old script: *) rename Heq_anonymous into Hne. rename Heq_anonymous0 into Heq_anonymous.
+  symmetry in Heq_anonymous.
+  rewrite orb_true_iff in Heq_anonymous. induction Heq_anonymous.
+  assert (yr < xr). induction (gt xr yr). induction x1; simpl in H0. eauto with arith. inversion H0.
+  right. intuition. assert (yr ≤ xr) by eauto with arith.
+      etransitivity; eauto. rewrite <- pf with (h:=h). apply pfx.
+      rewrite H2 in H1. rewrite <- pf with (h:=h) in H1.
+      assert (Htmp := lt_not_le _ _ H1).
+      exfalso. apply Htmp. apply pfx.
+
+  rewrite andb_true_iff in H0. destruct H0.
+  right. split. reflexivity.
+  assert (xr = yr). apply beq_nat_true. assumption.
+  subst xr.
+  split.
+  rewrite <- pf with (h:=h). apply pfx.
+  intros.
+  induction (gt (proj1_sig (to_nat x0)) (proj1_sig (to_nat y0))).
+  induction x1; simpl in H1.
+  rewrite fin_lt_nat in *. assumption.
+  inversion H1.
 Qed.
 Next Obligation. 
-  right. intuition. (* Ditto. *) admit.
+  (* patch old script: *) rename Heq_anonymous into Hne. rename Heq_anonymous0 into Heq_anonymous.
+  symmetry in Heq_anonymous.
+  rewrite orb_false_iff in Heq_anonymous. destruct Heq_anonymous.
+  induction (gt xr yr). induction x1; simpl in H0. inversion H0.
+  right. split; try reflexivity.
+  split.
+  etransitivity; try apply p. rewrite <- pf0 with (h:=h). apply pfy.
+  intros.
+  (* If xr ≤ yr, xr = getF(h[h[r]<|y0|>]), then the current rank of y is ≤ yr,
+     by pf0 and pfy, yr ≤ current rank of y, thus they're equal (and thus yr=xr).
+     But this then implies by H1 that y0 ≤ x0.,, when we're trying to prove x0 < y0.
+  *)
+  rewrite fin_lt_nat.
+  setoid_rewrite pf0 in pfy. unfold ge in pfy.
+  assert (yr ≤ xr). rewrite H2. apply pfy.
+  assert (xr = yr). eauto with arith.
+  subst yr.
+  rewrite andb_false_iff in *.
+  induction H1.
+      rewrite <- beq_nat_refl in H1. inversion H1.
+  induction (gt (proj1_sig (to_nat x0)) (proj1_sig (to_nat y0))).
+  induction x1; simpl in H1. inversion H1. red in p0.
+  inversion p0.
+  assert (forall (a b:t (S n)), proj1_sig (to_nat a) = proj1_sig (to_nat b) -> a = b).
+      intros a b.
+      Check Fin.rect2.
+      eapply Fin.rect2 with (a:=a)(b:=b); eauto.
+      intros. rewrite proj1_to_nat_comm in H4. simpl in H4. discriminate H4.
+      intros. rewrite proj1_to_nat_comm in H4. simpl in H4. discriminate H4.
+      intros. repeat rewrite proj1_to_nat_comm in H6. inversion H6. f_equal. firstorder.
+  assert (htmp := H4 _ _ H5). subst x0.
+  assert (fin_beq_refl : forall (x:t (S n)), fin_beq x x = true).
+    intros X.
+    clear pfx pfy pf0 pf Hne. clear p0 H5 H4 H2 oldx oldy r x y y0.
+    induction X; try reflexivity.
+    simpl. firstorder.
+  rewrite fin_beq_refl in *. inversion Hne.
+  assert (forall a b c, a ≤ b -> S b = c -> a < c).
+      intros. compute. assert (S a ≤ S b). apply le_n_S; eauto.
+      rewrite H7 in H8. assumption.
+  rewrite H4. firstorder.
 Qed.
-Next Obligation. left. intuition. eauto with arith. Qed.
+Next Obligation.
+  left. split. reflexivity. eauto with arith.
+Qed.
   
 (** *** Sameset test *)
 Program Definition Sameset {Γ n} (A:ref{uf (S n)|φ _}[δ _,δ _]) (x y:Fin.t (S n)) :=
