@@ -302,24 +302,77 @@ Proof.
       apply self_ascent; eauto.
       eapply trans_ascent; eauto.
 Qed.
-
+Lemma chase_new_heap : forall n x h h' i j, chase n x h i j -> chase n x h' i j.
+Proof.
+  intros. induction H; try constructor.
+  arrays h h'. eapply trans_chase; eauto.
+Qed.
+Lemma no_chase_extend : forall n x h s m,
+                          chase n x h s m ->
+                          forall f, ~ chase n x h s f ->
+                          ~ chase n x h m f.
+Proof.
+  intros n x h s m H.
+  induction H. tauto.
+  intros.
+  apply IHchase. intro.
+  apply H1. eapply trans_chase. eassumption. eauto.
+Qed.
 
 Lemma union_identity : forall n x h f y (c:ref{cell n|any}[local_imm,local_imm]),
-                         f≠y -> getF(h[c])=y -> 
+                         f≠y -> 
+                         (*getF(h[c])=y -> *)
                          terminating_ascent n x h y ->
+                         ~chase n x h y f ->
+                         getF(h[x<|f|>]) = f ->
                          forall y', chase n x h y y' -> f≠y' ->
                                     terminating_ascent n (array_write x f c) h y'.
 Proof.
-  intros n x h f y c. intro. intro. intro.
+  intros n x h f y c. intro.
+  intro.
+  intros Hchase.
+  intros Hupdate_root.
   
-  revert H0.
-  induction H1.
-  (* self *) intros. induction H2. apply self_ascent; arrays h h'; eauto.
-             assert (i = t) by congruence. rewrite H5 in *. firstorder.
+  induction H0.
+  (* self *) intros. induction H1. apply self_ascent; arrays h h'; eauto.
+             assert (i = t) by congruence. rewrite H4 in *. firstorder.
   (* trans *)
   intros. 
-  induction H4.
-Admitted.
+  induction H3.
+    induction (fin_dec _ f t). rewrite a in *.
+    exfalso. apply Hchase. eapply trans_chase; try constructor; eauto.
+    apply trans_ascent with (t:=t); arrays h h'.
+    apply IHterminating_ascent; eauto.
+    eapply no_chase_extend; eauto. eapply trans_chase; try solve[symmetry;eassumption]. constructor.
+  constructor.
+  unfold fin in *. assert (t = t0) by congruence. rewrite H6 in *. clear dependent t.
+  assert (f ≠ t0). intro Hbad. rewrite Hbad in *. exfalso. apply Hchase. eapply trans_chase. constructor. symmetry; eauto.
+  apply IHterminating_ascent; eauto.
+  eapply no_chase_extend; try eassumption. eapply trans_chase; try solve[symmetry;eassumption]. constructor.
+Qed.
+
+Lemma chase_dec : forall n x h i j, i≠j -> φ n x h -> chase n x h i j \/ ~chase n x h i j.
+Proof.
+  intros. generalize dependent j.
+  rename H0 into H.
+  intros j Hne.
+  induction H. intros.
+  induction (H i).
+  induction (fin_dec _ i j). subst j. left. constructor.
+                             right. intros Hbad. induction Hbad. contradiction b. auto.
+                             assert (i = t) by congruence. rewrite H2 in *. firstorder.
+  clear H1.
+  induction (fin_dec _ t j). subst j. 
+      left. eapply trans_chase; try constructor. symmetry; assumption.
+  induction (IHt b).
+  left. eapply trans_chase; eauto.
+  right.
+  intro Hbad. apply H1. 
+  clear IHt H1.
+  inversion Hbad. subst j. contradiction Hne; eauto.
+  subst j. unfold fin in *. assert (t1 = t) by congruence.
+  rewrite H3 in *. assumption.
+Qed.
 
 Require Import Coq.Arith.Lt.
 Lemma stable_φ_δ : forall n, stable (φ n) (δ n).
@@ -344,8 +397,79 @@ Proof.
       etransitivity; eauto. induction H4. eauto with arith. destruct H4. subst xr'. reflexivity.
 
       intros. 
+      induction (fin_dec _  i x). 
+          rewrite a in *. clear dependent i.
+          induction (fin_dec _ x y). subst y.
+            apply self_ascent; arrays h h'; eauto. rewrite H1. reflexivity.
+            apply trans_ascent with (t:=y); arrays h h'; eauto.
+                rewrite H1. reflexivity.
+                rewrite H1. rewrite H3. simpl.
+                induction H4. eauto with arith. destruct H4. subst xr'. reflexivity.
+              (* Now we're pointing to y, which doesn't chase back to x in x0 *)
+              eapply union_identity; eauto.
+                eapply ascend_new_heap; eauto.
+                (* BETTER be provable that ~ chase y x *)
+                    Require Import Coq.Arith.Le.
+                    Require Import Coq.Arith.Lt.
+                    intro X. induction H4.
+                    (* xr' < yr *) 
+                    induction X. apply b; reflexivity.
+                    assert (Hch' := chase_new_heap n x0 h' h _ _ X).
+                    arrays h' h.
+                    assert (Htmp := chase_rank' n h x0 _ _ _ (H i) H10 Hch').
+                    arrays h h'. rewrite H3 in Htmp. rewrite H0 in Htmp. simpl in Htmp.
+                    assert (yr ≤ xr'). etransitivity; eauto.
+                    assert (h'' := le_not_lt _ _ H11). apply h''. assumption.
+                    
+                    (* xr'=yr, x < y *)
+                    destruct H4. subst xr'.
+                    induction X. apply b; reflexivity.
+                    assert (Hch' := chase_new_heap n x0 h' h _ _ X).
+                    arrays h' h.
+                    assert (Htmp := chase_rank' n h x0 _ _ _ (H i) H4 Hch').
+                    rewrite H0 in Htmp. rewrite H8 in Htmp. simpl in Htmp.
+                    assert (heq := le_antisym _ _ Htmp H9). subst xr.
+                    (* now the ranks must be == from i->t->...->f. and f < i.
+                       but by inducting on term_ascent i, which reaches f, if
+                       the ranks are equal then i < f, which is a contradiction. *)
+                    induction (H i).
+                      (* self *) assert (t=i) by congruence. rewrite H12 in *.
+                                 induction X. eapply lt_irrefl; eassumption.
+                                 (* working... clean up IH *) admit.
+                      (* trans *) unfold fin in *. assert (t0 = t) by congruence. rewrite H13 in *.
+                                 (* Looks like I need to add a hyp to the inductive
+                                    term_ascent ctor... if the ranks are = then child < parent  *)
+                                 admit.
+                    
+                    (*intro X.
+                    clear H0 H4 H1 H3 H8 H5 H6.
+                    induction (H y). 
+                      induction X. apply b; auto. unfold fin in *.
+                        arrays h h'; assert (t=i) by congruence. rewrite H3 in *.
+                        firstorder.
+                      induction (fin_dec _ i t). rewrite a in *. firstorder.
+                      (* induct on dec x t, or X, chase lemma, term_ascent, something else? *) admit.*)
+                    
+                arrays h h'; rewrite H0; reflexivity.
+                constructor.
 
+      (* i ≠ x *)
+      einduction (chase_dec n x0 h _ _ b).
+      
+        (* TODO: does chase to midpoint *) admit. (* should be as above... *)
+      
+        eapply union_identity; eauto.
+          eapply ascend_new_heap; eauto.
+          intro X. apply H10. eapply chase_new_heap; eauto.
+          arrays h h'; rewrite H0; reflexivity.
+          constructor.
+
+          constructor. assumption.
+
+          (*
       (* TODO: It may be worth proving a separate lemma that ascent is preserved for anything reachable from y in the original *)
+      
+      induction (fin_dec _ x i).
 
       induction (H i).
       (* originally self-ascent *)
@@ -377,12 +501,17 @@ Proof.
                                          assert (xr = xr'). eauto using le_antisym. subst xr.
                                      apply trans_ascent with (t:=t); arrays h h'.
                                        rewrite H1. rewrite <- H4. reflexivity.
+                                       
+                                     eapply trans_ascent; eauto.
+
                                      admit.
                              apply trans_ascent with (t:=t); arrays h h'.
                                assert (getF (h'[c]) = i0). rewrite H1. reflexivity.
                                eapply union_identity; try apply H13; eauto.
                                eapply ascend_new_heap; eauto.
-                               eapply trans_chase. constructor. subst t. reflexivity.
+                               (* Seems like we don't know union_identity is applicable here... can't invalidate this chase *) admit.
+                               constructor.
+                               (*eapply trans_chase. constructor. subst t. reflexivity.*)
                                apply self_ascent; arrays h h'; eauto.
     (* originally trans *)
     induction (fin_dec _ x i).
@@ -393,13 +522,14 @@ Proof.
         apply trans_ascent with (t:=y); arrays h h'; eauto. rewrite H1. reflexivity.
         rewrite H1. rewrite H8. simpl. 
         induction H4. eauto with arith. destruct H4; subst xr'; reflexivity.
-        eapply union_identity. Focus 2. rewrite H1. reflexivity.
+        eapply union_identity. Focus 4. rewrite H0. reflexivity.
+          Focus 2. eapply ascend_new_heap; eauto. 
           intuition. simpl. eapply ascend_new_heap; eauto.
           simpl. constructor. intuition.
 
     apply trans_ascent with (t:=t); arrays h h'; eauto.
         induction (fin_dec _ x t); try subst x; arrays h h'.
-        rewrite H1. rewrite H5 in H11. etransitivity; eauto.
+        rewrite H1. rewrite H5 in H11. etransitivity; eauto.*)
 (*
       rewrite immutable_vals with (h' := h') in H1.
       
@@ -609,16 +739,15 @@ Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
 (** *** UpdateRoot *)
 Require Import Coq.Arith.Arith.
 Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t (S n)) (oldrank:nat) (y:Fin.t (S n)) (newrank:nat) 
-  (pf : {x=y/\newrank>oldrank}+{fin_lt x y=true/\oldrank=newrank}): rgref Γ bool Γ :=
-  (*let old := (A ~> x) in*)
+  (pf:forall h, x=y/\newrank>oldrank \/ 
+                    (newrank=oldrank/\newrank ≤ getF (f:=rank)(FT:=nat) (h[h[A]<|y|>])
+                     /\ (newrank = getF(f:=rank)(FT:=nat)(h[h[A]<|y|>]) -> fin_lt x y = true)))
+: rgref Γ bool Γ :=
   old <- rgret (A ~> x) ;
-  (*
-  if (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
-          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank n)) (*old~>rank*) oldrank)))
-*)
-  (* TODO: Should match-refine the old ref before this. *)
-  match (orb (negb (fin_beq (@field_read _ _ _ _ _ _ _ _ _ _ old parent _ _) (*old ~> parent*) x))
-          (negb (beq_nat (@field_read _ _ _ _ _ _ _ _ _ _ old rank _ (@cell_rank (S n))) (*old~>rank*) oldrank)))
+  observe-field-explicit cell_parent for old --> parent as oparent, pfp in (λ x h, getF x = oparent);
+  observe-field-explicit (@cell_rank (S n)) for old --> rank as orank, pfp in (λ x h, getF x = orank);
+  match (orb (negb (fin_beq oparent (*old ~> parent*) x))
+          (negb (beq_nat orank (*old~>rank*) oldrank)))
   with
   (*then*) |true => rgret false
   (*else*)|false=> (
@@ -628,6 +757,8 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t
   )
   end
 .
+Next Obligation. compute; intros; subst; eauto. Qed.
+Next Obligation. compute; intros; subst; eauto. Qed.
 Next Obligation.
   
   unfold UpdateRoot_obligation_13.
@@ -638,6 +769,8 @@ Next Obligation.
   unfold UpdateRoot_obligation_18.
   unfold UpdateRoot_obligation_19.
   unfold UpdateRoot_obligation_20.
+  unfold UpdateRoot_obligation_21.
+  unfold UpdateRoot_obligation_22.
   assert (H := heap_lookup2 h new).
   destruct H.
   
@@ -653,48 +786,41 @@ Next Obligation.
   assert (H'' := H3 _ H2). assert (H''' := beq_nat_eq _ _ H'').
   clear H3. clear H''.
 
-  induction pf.
+  induction (pf h) as [a | b].
   (* bump rank *)
   destruct a. subst y.
-  apply bump_rank with (xr := oldrank) (xr' := newrank); eauto with arith;
-    try rewrite <- convert_equiv.
-  erewrite <- field_projection_commutes' with (h:=h) in *; eauto.
+  apply bump_rank with (xr := oldrank) (xr' := newrank).
   Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
   rewrite (cell_ctor_complete _ (h[h[A]<|x|>])). f_equal; eauto.
-  assert (Htmp := heap_lookup2 h new). destruct Htmp. firstorder.
+  subst. compute [getF cell_rank]. eauto.
+  subst. compute [getF cell_parent]. eauto.
+  eauto with arith.
+  rewrite <- convert_equiv. eauto.
 
   (* path union *)
   eapply path_union.
   
   cut (h[ h[A]<|x|>] = mkCell _ oldrank x).
   intro t; apply t.
-  Check field_projection_commutes'.
 
-  (** Is there a granularity / atomicity issue w/ the fields of old?
-      Shouldn't be; old is local_imm, and the ptr is only read once, with
-      equivalence with h[A]<|x|> introduced by the CAS *)
-
-  erewrite <- field_projection_commutes with (h:=h) in H'.
-  erewrite <- field_projection_commutes with (h:=h) in H'''.
-  unfold UpdateRoot_obligation_5 in *.
-  unfold UpdateRoot_obligation_3 in *.
-  simpl eq_rec in *.
   rewrite (cell_ctor_complete _ (h[ _ ])).
   f_equal; eauto.
+  subst. compute [getF cell_rank]. eauto.
+  subst. compute [getF cell_parent]. eauto.
 
   rewrite <- convert_equiv. apply H0. firstorder.
   
-  (* TODO: We don't need the fin_lt x y (and at call sites, we can't provide it!
-     information that y's rank is greater than x's should come from elsewhere;
-     ideally from a Program match, but the paper doesn't have one.  It seems to
-     be /stable/ contextual information about y that its rank is >= oldrank,
-     so it should be provided at the call site.  Need to fix the pf arg. *)
-  destruct b. subst oldrank; reflexivity.
+  destruct b. subst oldrank. subst orank. reflexivity.
   reflexivity.
-  assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
-                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)) by admit.
-  induction (H3 h); intuition. 
-  right. intuition. rewrite fin_lt_nat in H6. assumption.
+  destruct b.
+  destruct H4.
+  inversion H4.
+      right. split; try reflexivity. intuition. rewrite fin_lt_nat in *. assumption.
+  left.
+  assert (forall a b c, a ≤ b -> S b = c -> a < c).
+      intros. compute. assert (S a ≤ S b). apply le_n_S; eauto.
+      rewrite H9 in H10. assumption.
+  eapply H8; eauto.
 
 Qed. (* UpdateRoot guarantee (δ n) *)
 
@@ -890,34 +1016,42 @@ Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _
   array_field_index.
 Check @field_read_refine.
 Check fielding.
+Lemma uf_cell_increasing_rank :
+   ∀ n x0,
+   ∀ t : ref{cell (S n) | any }[ local_imm, local_imm],
+            stable
+              (λ (A : uf (S n)) (h : heap),
+               getF (h [A <| x0 |>]) ≥ getF (h [t])) 
+              (δ (S n)).
+Proof.
+  compute; intuition; eauto.
+  induction H0;
+  match goal with
+  | [ |- context[array_read (array_write ?x ?f ?c) ?x0] ] => induction (fin_dec _ f x0)
+  end; try subst x0; arrays h h'; eauto.
+  compute in H1; rewrite <- H1; eauto.
+  assert (getF (h'[A<|x|>]) ≤ getF (h'[c])).
+     rewrite H1. rewrite H0. compute. eauto.
+  unfold getF in H5. unfold cell_rank in H5.
+  etransitivity; eauto.
+  assert (getF (h'[A<|x|>]) ≤ getF (h'[c])).
+     rewrite H2. rewrite H0. compute. eauto.
+  unfold getF in H3. unfold cell_rank in H3.
+  etransitivity; eauto.
+Qed.
+Hint Resolve uf_cell_increasing_rank.
+
 Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S n)) : rgref Γ unit Γ :=
   RGFix _ _ (fun TryAgain _ =>
                x <- Find r x;
                y <- Find r y;
-               if (fin_beq x y)
-               then rgret tt
-               else (
+               match (fin_beq x y) with
+               | true => rgret tt
+               | false => (
                    observe-field r --> x as oldx, pfx in (λ A h, getF (h[(array_read A x)]) ≥ getF (h[oldx]));
                    observe-field r --> y as oldy, pfy in (λ A h, getF (h[(A<|y|>)]) ≥ getF (h[oldy]));
-                   (*_ <- @field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ oldx rank (@fielding n) _ _ _ _ _;*)
-                   (*_ <- field_read_refine (X:=nat)(H0:=@fielding _) _ oldx rank _ _ _ _ ;*)
-                   observe-field-explicit (@cell_rank (S n)) for oldx --> rank as rankx, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c ≥ rankx);
-                   (** TODO: revisit for non-atomic multiple reads, sequencing *)
-                   (** TODO: Should be be reading from x' and y' here instead of x and y??? *)
-                   xr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
-                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r x (@array_fields (S n) _) (@array_field_index (S n) _ x))
-                                          rank _ (@cell_rank (S n)));
-                   (** TODO: Should break this up and refine r such that (forall h, h[r<|y|>].rank >= old_y_ptr.rank), which provides
-                       an assumption UpdateRoot needs *)
-                   yr <- rgret (@field_read _ _ _ _ _ _ _ _ _ _
-                                          (@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r y (@array_fields (S n) _) (@array_field_index (S n) _ y))
-                                          rank _ (@cell_rank (S n)));
-                   (*_ <-
-                   (if (orb (gt xr yr)
-                           (andb (beq_nat xr yr)
-                                 (gt (to_nat x) (to_nat y))))
-                   then _ (** TODO: Swap(x,y); Swap(xr,yr); <-- Is this updating imperative variables? *)
-                   else rgret tt) ; *)
+                   observe-field-explicit (@cell_rank (S n)) for oldx --> rank as xr, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c = xr);
+                   observe-field-explicit (@cell_rank (S n)) for oldy --> rank as yr, pf in (λ (c:cell _) h, getF (FieldType:=cell_rank) c = yr);
                    ret <-
                    (match (orb (gt xr yr)
                            (andb (beq_nat xr yr)
@@ -925,7 +1059,6 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                    | true => UpdateRoot r y yr x yr _ 
                    | false => UpdateRoot r x xr y xr _ 
                    end);
-                   (*ret <- UpdateRoot r x xr y yr _;*)
                    if ret
                    then TryAgain tt
                    else if (beq_nat xr yr)
@@ -933,61 +1066,84 @@ Program Definition union {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (x y:Fin.t (S
                         else rgret tt
                    
                )
+               end
             )
         tt.
-(** Proof obligations for UpdateRoot calls *)
-  (*assert (forall h, newrank < getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) \/ 
-                    (newrank = getF (f:=rank)(FT:=nat) (h[h[A]<|y|>]) /\ fin_lt x y = true)).*)
-Next Obligation.  (* TODO: Pull out as lemma *)
-  compute; intuition; eauto.
-  induction H1.
-    induction (fin_dec _ f x0).
-      subst x0; arrays h h'. compute in H2. rewrite <- H2. eauto.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 x0).
-      subst x0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H2. compute. eauto.
-         unfold getF in H6. unfold cell_rank in H6. assumption.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 x0).
-      subst x0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H3. compute. eauto.
-         unfold getF in H4. unfold cell_rank in H4. assumption.
-      arrays h h'; compute in H2; eauto.
-Qed.  
-Next Obligation. 
-  compute; intuition; eauto.
-  induction H1.
-    induction (fin_dec _ f y0).
-      subst y0; arrays h h'. compute in H2. rewrite <- H2. eauto.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 y0).
-      subst y0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H2. compute. eauto.
-         unfold getF in H6. unfold cell_rank in H6. assumption.
-      arrays h h'; compute in H2; eauto.
-    induction (fin_dec _ x1 y0).
-      subst y0; arrays h h'. etransitivity; eauto. 
-          assert (getF (h'[A<|x1|>]) ≤ getF (h'[c])).
-            rewrite H1. rewrite H3. compute. eauto.
-         unfold getF in H4. unfold cell_rank in H4. assumption.
-      arrays h h'; compute in H2; eauto.
-Qed.
+Next Obligation.  eapply uf_cell_increasing_rank. Qed.
+Next Obligation.  eapply uf_cell_increasing_rank. Qed.
 Next Obligation. compute; intuition; subst; eauto. Qed.
+Next Obligation. compute; intuition; subst; eauto. Qed.
+Require Import Coq.Bool.Bool.
+Require Import Coq.Arith.Lt.
 Next Obligation. 
-    Set Printing Notations. idtac.
-    Require Import Coq.Bool.Bool.
-    symmetry in Heq_anonymous.
-    right. intuition.
-    (* TODO: trying to make y < x seems wrong; we know the ranks are ordered correctly.  A refine-match on the to-be-parent that its rank is >= a val, and the to-be-child's rank is <= that val, ensures ordering... so this shouldn't be req'd. *) admit.
+  (* patch old script: *) rename Heq_anonymous into Hne. rename Heq_anonymous0 into Heq_anonymous.
+  symmetry in Heq_anonymous.
+  rewrite orb_true_iff in Heq_anonymous. induction Heq_anonymous.
+  assert (yr < xr). induction (gt xr yr). induction x1; simpl in H0. eauto with arith. inversion H0.
+  right. intuition. assert (yr ≤ xr) by eauto with arith.
+      etransitivity; eauto. rewrite <- pf with (h:=h). apply pfx.
+      rewrite H2 in H1. rewrite <- pf with (h:=h) in H1.
+      assert (Htmp := lt_not_le _ _ H1).
+      exfalso. apply Htmp. apply pfx.
+
+  rewrite andb_true_iff in H0. destruct H0.
+  right. split. reflexivity.
+  assert (xr = yr). apply beq_nat_true. assumption.
+  subst xr.
+  split.
+  rewrite <- pf with (h:=h). apply pfx.
+  intros.
+  induction (gt (proj1_sig (to_nat x0)) (proj1_sig (to_nat y0))).
+  induction x1; simpl in H1.
+  rewrite fin_lt_nat in *. assumption.
+  inversion H1.
 Qed.
 Next Obligation. 
-  right. intuition. (* Ditto. *) admit.
+  (* patch old script: *) rename Heq_anonymous into Hne. rename Heq_anonymous0 into Heq_anonymous.
+  symmetry in Heq_anonymous.
+  rewrite orb_false_iff in Heq_anonymous. destruct Heq_anonymous.
+  induction (gt xr yr). induction x1; simpl in H0. inversion H0.
+  right. split; try reflexivity.
+  split.
+  etransitivity; try apply p. rewrite <- pf0 with (h:=h). apply pfy.
+  intros.
+  (* If xr ≤ yr, xr = getF(h[h[r]<|y0|>]), then the current rank of y is ≤ yr,
+     by pf0 and pfy, yr ≤ current rank of y, thus they're equal (and thus yr=xr).
+     But this then implies by H1 that y0 ≤ x0.,, when we're trying to prove x0 < y0.
+  *)
+  rewrite fin_lt_nat.
+  setoid_rewrite pf0 in pfy. unfold ge in pfy.
+  assert (yr ≤ xr). rewrite H2. apply pfy.
+  assert (xr = yr). eauto with arith.
+  subst yr.
+  rewrite andb_false_iff in *.
+  induction H1.
+      rewrite <- beq_nat_refl in H1. inversion H1.
+  induction (gt (proj1_sig (to_nat x0)) (proj1_sig (to_nat y0))).
+  induction x1; simpl in H1. inversion H1. red in p0.
+  inversion p0.
+  assert (forall (a b:t (S n)), proj1_sig (to_nat a) = proj1_sig (to_nat b) -> a = b).
+      intros a b.
+      Check Fin.rect2.
+      eapply Fin.rect2 with (a:=a)(b:=b); eauto.
+      intros. rewrite proj1_to_nat_comm in H4. simpl in H4. discriminate H4.
+      intros. rewrite proj1_to_nat_comm in H4. simpl in H4. discriminate H4.
+      intros. repeat rewrite proj1_to_nat_comm in H6. inversion H6. f_equal. firstorder.
+  assert (htmp := H4 _ _ H5). subst x0.
+  assert (fin_beq_refl : forall (x:t (S n)), fin_beq x x = true).
+    intros X.
+    clear pfx pfy pf0 pf Hne. clear p0 H5 H4 H2 oldx oldy r x y y0.
+    induction X; try reflexivity.
+    simpl. firstorder.
+  rewrite fin_beq_refl in *. inversion Hne.
+  assert (forall a b c, a ≤ b -> S b = c -> a < c).
+      intros. compute. assert (S a ≤ S b). apply le_n_S; eauto.
+      rewrite H7 in H8. assumption.
+  rewrite H4. firstorder.
 Qed.
-Next Obligation. left. intuition. eauto with arith. Qed.
+Next Obligation.
+  left. split. reflexivity. eauto with arith.
+Qed.
   
 (** *** Sameset test *)
 Program Definition Sameset {Γ n} (A:ref{uf (S n)|φ _}[δ _,δ _]) (x y:Fin.t (S n)) :=
