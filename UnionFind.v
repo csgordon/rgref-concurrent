@@ -432,11 +432,24 @@ Proof.
                     (* now the ranks must be == from i->t->...->f. and f < i.
                        but by inducting on term_ascent i, which reaches f, if
                        the ranks are equal then i < f, which is a contradiction. *)
-                    induction (H i).
+                    induction (H i). 
                       (* self *) assert (t=i) by congruence. rewrite H12 in *.
-                                 induction X. eapply lt_irrefl; eassumption.
-                                 (* working... clean up IH *) admit.
-                      (* trans *) unfold fin in *. assert (t0 = t) by congruence. rewrite H13 in *.
+                                 clear H6 H5 H2 H7 H9 Htmp H11 H12 t IHX H8.
+                                 assert (i = f). induction X; try reflexivity.
+                                 arrays h h'. assert (i=t) by congruence. rewrite <- H5 in *. clear H5. clear t.
+                                 firstorder.
+                                 subst f. eapply lt_irrefl; eauto.
+                      (* trans *) unfold fin in *. assert (t0 = t) by congruence. rewrite H13 in *. clear H13 t0.
+                                 assert (getF (h[x0<|t|>]) ≤ getF (h[x0<|f|>])).
+                                     induction (fin_dec _ t f). subst f. reflexivity.
+                                     eapply chase_rank'; eauto.
+                                     induction Hch'. exfalso; intuition.
+                                       clear IHHch'.
+                                     rewrite H13. assumption.
+                                 assert (getF (h[x0<|t|>]) = yr).
+                                     rewrite H3 in H12.
+                                     rewrite H0 in H13. unfold getF at 2 in H13. unfold cell_rank in *.
+                                     eapply le_antisym; eauto.
                                  (* Looks like I need to add a hyp to the inductive
                                     term_ascent ctor... if the ranks are = then child < parent  *)
                                  admit.
