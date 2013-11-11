@@ -82,6 +82,7 @@ Inductive δ (n:nat) : hrel (uf n) :=
                   xr ≤ xr' ->
                   h[c] = mkCell n xr' x ->
                   δ n A (array_write A x c) h h'
+  | uf_id : forall A h h', δ n A A h h'
 .
 
 Ltac fcong i j :=
@@ -708,6 +709,8 @@ Proof.
       
       (* new conditional goal *)
       arrays h h'.
+  (* refl *)
+  destruct H; constructor; eauto using ascend_new_heap.
 Qed.
 Hint Resolve stable_φ_δ.
 
@@ -753,6 +756,8 @@ Lemma precise_δ : forall n, precise_rel (δ n).
     rewrite (immutable_vals  _ _ h h2) in H1.
     rewrite (immutable_vals  _ _ h h2) in H3.
     eapply bump_rank; eauto.
+  (* refl *)
+  eapply uf_id.
 Qed.
     
 Hint Resolve precise_φ precise_δ.
@@ -774,26 +779,8 @@ Hint Resolve precise_φ precise_δ.
 *)
 Lemma refl_δ : forall n, hreflexive (δ (S n)).
 Proof.
-  (*intros; red; intros.
-  rewrite <- (array_id_update x (@F1 _)) at 2 .
-  (* TODO: This seems to require knowledge that x is wf *) assert (φ _ x h) by admit.
-  inversion H; subst. specialize (H0 (@F1 _)).
-  assert (Htmp := ascent_root _ _ _ _ H0). destruct Htmp.
-  eapply path_compression; try eassumption.
-  induction H1.
-  rewrite H1. eapply self_root; eauto.
-  rewrite H2. assumption.
-  
-  eapply trans_chase.
-  Focus 2. reflexivity.
-  apply self_chase. 
-*)
-  intros. red. intros.
-  rewrite <- (array_id_update x (@F1 _)) at 2.
-  Check bump_rank.
-  eapply bump_rank with (xr := getF (h[x<|F1|>])) (xr' := getF (h[x<|F1|>])).
-  (** TODO: Need a lemma that there exists a root.... but then we need to assume φ again... *)
-Admitted. (* refl_δ *)
+  intros; red; intros. constructor.
+Qed.
 Hint Resolve refl_δ.
 Instance read_uf {n:nat} : readable_at (uf n) (δ n) (δ n) := id_fold.
 
@@ -1149,7 +1136,7 @@ Lemma uf_cell_increasing_rank :
 Proof.
   compute; intuition; eauto.
   induction H0;
-  match goal with
+  try match goal with
   | [ |- context[array_read (array_write ?x ?f ?c) ?x0] ] => induction (fin_dec _ f x0)
   end; try subst x0; arrays h h'; eauto.
   compute in H1; rewrite <- H1; eauto.
