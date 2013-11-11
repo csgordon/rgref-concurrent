@@ -35,6 +35,8 @@ Inductive terminating_ascent (n:nat) (x:uf n) (h:heap) (i:Fin.t n) : Prop :=
   | trans_ascent : forall t,
                      t = (getF (h[x <| i |>])) ->
                      (getF (h[x <| i |>])) ≤ (getF (h[x <| t |>])) ->
+                     (@eq nat (getF (h[x <| i |>])) (getF (h[x <| t |>])) -> 
+                         proj1_sig (to_nat i) < proj1_sig (to_nat t)) ->
                      terminating_ascent n x h t ->
                      terminating_ascent n x h i.
 
@@ -82,6 +84,13 @@ Inductive δ (n:nat) : hrel (uf n) :=
                   δ n A (array_write A x c) h h'
 .
 
+Ltac fcong i j :=
+  unfold fin in *; 
+  let H := fresh in
+  assert (H : i = j) by congruence;
+  rewrite H in *;
+  clear dependent i.
+
 Lemma chase_rank' : forall n h x i j t,
                       terminating_ascent n x h i ->
                       getF (h[x<|i|>]) = t ->
@@ -94,14 +103,11 @@ Proof.
   generalize dependent i.
   dependent induction H1; intros.
       dependent induction H. rewrite H in H0. subst i0. auto.
-                             unfold fin in *.
-                             assert (t=i) by congruence. rewrite <- H3 in *. assumption.
+                             fcong t i. rewrite H3 in *. assumption.
       dependent induction H0. 
-          assert (i=i0) by congruence. subst i0.
-          assert (i=t) by congruence. subst t. rewrite H0 in H1.
+          fcong i0 i. fcong t i.
           apply IHchase; eauto. apply self_ascent; eauto.
-          unfold fin in *.
-          assert (i=t0) by congruence. rewrite <- H5 in *.
+          fcong i t0.
       etransitivity; try eassumption.
       apply IHchase; eauto.
 Qed.
@@ -120,9 +126,8 @@ Lemma Hself_ref : forall n x h,
   intros n x h H.
     intros A.
     induction (H A).
-        intros. unfold fin in *. congruence.
-        intros. unfold fin in *.
-          assert (i1=t) by congruence. rewrite H4 in *.
+        intros. fcong i1 i; eauto.
+        intros. fcong t i1.
           symmetry. apply IHt; eauto.
 Qed.
 Lemma Hdouble : forall n x h,
@@ -132,151 +137,15 @@ Proof.
   intros n x h H.
   intro X. induction (H X); intros.
                induction H1; induction H2; auto.
-               assert (f=t) by congruence. rewrite <- H5 in *. clear dependent t.
+               fcong t f.
                apply IHchase; eauto. eapply trans_chase. eassumption. assumption.
            assert (chase n x h Z t).
-               induction H3. eapply trans_chase. constructor. intuition.
+               induction H4. eapply trans_chase. constructor. intuition.
                  eapply trans_chase'. eassumption. eapply trans_chase. eassumption. assumption.
-           induction H2. reflexivity. 
-             unfold fin in *. assert (t = t1) by congruence. rewrite H6 in *. clear dependent t.
-             assert (Htmp := IHt _ H2 H4). rewrite Htmp in *.
+           induction H3. reflexivity. 
+             fcong t t1.
+             assert (Htmp := IHt _ H3 H5). rewrite Htmp in *.
              symmetry. apply IHt; try eassumption. eapply trans_chase. constructor. assumption.
-Qed.
-Lemma chase_update_preserves_term_ascent :
-  forall h h' n x f i mid c,
-    @eq nat (getF (h[x <| f |>])) (getF (h[c])) ->
-    (forall i, terminating_ascent n x h i) ->
-    chase n x h f mid ->
-    getF (h [c]) = mid ->
-    terminating_ascent n (array_write x f c) h' i.
-Proof.
-  intros h h' n x f i mid c Hrank H.
-  intros Hc Hf.
-  induction (H i).
-  (* self *)
-  induction (fin_dec _ f i).
-      subst i.
-      (*Check chase_ind.
-      eapply (chase_ind n x)
-      with (h := h)
-      (P := fun base targ => 
-                   terminating_ascent n (array_write x f c) h' f).*)
-      inversion Hc.
-          apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
-          subst f0. 
-              induction (H mid).
-                induction (fin_dec _ f i). subst f. apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
-                    apply trans_ascent with (t:=i);
-                      try rewrite read_updated_cell;
-                      try rewrite read_past_updated_cell; eauto;
-                      try rewrite immutable_vals with (h':=h') in *.
-                    symmetry; auto.
-
-                    rewrite immutable_vals with (h':=h). rewrite <- Hrank.
-                    etransitivity. rewrite immutable_vals with (h':=h). reflexivity.
-                    rewrite <- immutable_vals with (h:=h)(h':=h').
-                    eapply chase_rank'; eauto.
-                    rewrite immutable_vals with (h:=h)(h':=h').
-                    rewrite H2. assumption.
-
-                    apply self_ascent. rewrite read_past_updated_cell.
-                    erewrite immutable_vals; eassumption. assumption.
-                assert (f = i). clear IHt0 t1 H4 H1.
-                    induction Hc. auto.
-                    assert (i = t). congruence. subst t.
-                    assert (i = t1). congruence. subst t1.
-                    rewrite H2. apply IHHc; eauto.
-                    rewrite <- H2. symmetry; auto.
-                    rewrite <- H2. symmetry; auto.
-                    rewrite <- H2. symmetry; auto.
-                subst f.
-                assert (i = t) by congruence. subst t.
-                assert (t0 = i). subst t0. rewrite <- H0 at 2. reflexivity. subst t0.
-                apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
-
-      apply self_ascent. rewrite read_past_updated_cell; auto. erewrite immutable_vals; eassumption; auto.
-  (* trans *)
-  induction (fin_dec _ f i). subst i.
-  apply trans_ascent with (t:=mid). rewrite read_updated_cell. 
-                                    rewrite immutable_vals with (h':=h).
-                                    rewrite <- Hf. reflexivity.
-                                    rewrite read_updated_cell.
-                                    induction (fin_dec _ f mid).
-                                      rewrite <- a. rewrite read_updated_cell. reflexivity.
-                                      rewrite read_past_updated_cell; auto.
-                                      
-                                      repeat rewrite <- immutable_vals with (h:=h)(h':=h').
-                                      rewrite <- Hrank.
-                                      assert (chase n x h t mid).
-                                          clear H1. clear IHt. clear t0.
-                                          inversion Hc. contradiction b. 
-                                          unfold fin in *. 
-                                          subst f0. 
-                                          assert (t=t0) by congruence. subst t.
-                                          rewrite H2. assumption.
-                                      eapply chase_rank'; auto.
-                                      rewrite H0 in H2. assumption.
-
-
-                                    induction (fin_dec _ f mid).
-                                      rewrite <- a in *. apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
-                                      assert (chase n x h t mid).
-                                          induction Hc. contradiction b. reflexivity.
-                                              unfold fin in *. assert (t1=t) by congruence.
-                                              rewrite H3 in *.
-                                              assumption.
-                                      symmetry in H0.
-                                      assert (Htp := chase_rank' n h x f mid t (H f) H0 H2).
-                                      clear Hf.
-                                      induction (H mid). apply self_ascent. rewrite read_past_updated_cell. erewrite immutable_vals; eassumption. assumption.
-
-                                      induction (fin_dec _ f t1).
-                                        rewrite <- a in *. clear dependent t1.
-                                        (* i->f->t in x, but i->f->(via c)->i in x', which doesn't preserve terminating_ascent,
-                                           so there *should* be a contradiction here somewhere!. *)
-                                        (* In x, we have:
-                                             - H2: chase n x h t i         --- t->...->i
-                                             - H3: getF (h[x<|i|>]) = f    --- i->f
-                                             - H0: getF (h[x<|f|>]) = t    --- f->t
-                                             - H0 w/ H3                    --- i->f->t
-                                           so we have t->...->i and i->...->t, both in x, where all indices
-                                           have terminating ascents.  The only way for this to be consistent
-                                           is for t=f=i... *)
-                                        assert (forall i0 i1, getF (h [x <| i0 |>]) = i1 -> getF (h [x <| i1 |>]) = i0 ->
-                                                              i1 = i0).
-                                            eauto using Hself_ref.
-                                        
-                                        assert (t=i). eapply Hdouble; eauto.
-                                            eapply trans_chase; eauto. unfold fin in *. rewrite <- H3.
-                                            eapply trans_chase; eauto. constructor. 
-                                        rewrite H6 in *.
-                                        assumption.
-                                        
-                                      apply trans_ascent with (t := t1).
-                                        rewrite read_past_updated_cell; auto; erewrite immutable_vals; eassumption.
-                                        rewrite read_past_updated_cell; auto.
-                                        rewrite immutable_vals with (h' := h).
-                                        rewrite read_past_updated_cell; auto.
-                                        etransitivity; try eassumption.
-                                        erewrite immutable_vals; reflexivity.
-                                        apply IHt1; try eassumption.
-                                        eapply trans_chase'; eauto.
-                                        eapply trans_chase'. apply H3. assumption.
-                                        etransitivity; eassumption.
-    induction (fin_dec _ f t). 
-        apply trans_ascent with (t:=t); try rewrite read_past_updated_cell; auto.
-        erewrite immutable_vals. eassumption.
-        subst f. rewrite read_updated_cell. 
-        
-        repeat rewrite <- immutable_vals with (h:=h)(h':=h').
-        rewrite <- Hrank. assumption.
-
-    apply trans_ascent with (t:=t); try rewrite read_past_updated_cell; auto.
-        erewrite immutable_vals. eassumption.
-        rewrite read_past_updated_cell; auto.
-        rewrite immutable_vals with (h':=h') in *.
-        etransitivity. eassumption.
-        rewrite immutable_vals with (h':=h'). reflexivity.
 Qed.
 
 Definition imm_vals' : forall h h' T P r, h[r]=h'[r] :=
@@ -294,6 +163,11 @@ Ltac arrays h h' :=
                rewrite read_past_updated_cell; auto
                end).
 
+Lemma self_loop_chase : forall n x h i j,
+                          chase n x h i j ->
+                          getF (h[x<|i|>]) = i ->
+                          i = j.
+Proof. intros. induction H; eauto. fcong t i. firstorder. Qed.
 Lemma ascend_new_heap : forall n x h h', (forall i, terminating_ascent n x h i) ->
                                          forall i, terminating_ascent n x h' i.
 Proof.
@@ -307,6 +181,306 @@ Proof.
   intros. induction H; try constructor.
   arrays h h'. eapply trans_chase; eauto.
 Qed.
+Lemma chase_step : forall n x h a b c,
+                     chase n x h a c -> a ≠ c -> getF(h[x<|a|>])=b -> chase n x h b c.
+Proof. intros.
+       generalize dependent b.
+       induction H. exfalso; eauto.
+       intros. fcong t b. clear H2.
+       induction (fin_dec _ b f). subst f. constructor.
+       firstorder.
+Qed.
+Lemma no_chase_step : forall n x h a b c,
+                        ~chase n x h a c -> a≠c -> getF(h[x<|a|>])=b -> ~chase n x h b c.
+Proof. intros. intro Hbad. apply H. eapply trans_chase; eauto. Qed.
+
+Lemma sort_equiv_rank : forall n x h,
+                          (forall i, terminating_ascent n x h i) ->
+                          forall a b,
+                            chase n x h a b ->
+                            a ≠ b ->
+                            @eq nat (getF(h[x<|a|>])) (getF(h[x<|b|>])) ->
+                            proj1_sig (to_nat a) < proj1_sig (to_nat b).
+Proof.
+  intros n x h H a.
+  induction (H a); intros.
+      exfalso. apply H2. eapply self_loop_chase; eauto.
+      assert ((getF(h[x<|b|>])) ≤ (getF(h[x<|t|>]))).
+          rewrite <- H5. assumption.
+      assert (chase n x h t b). eapply chase_step; eauto.
+      assert ((getF(h[x<|t|>])) ≤ (getF(h[x<|b|>]))).
+          clear H5 H6 H3 IHt. clear H0 H2. induction H7. reflexivity.
+          etransitivity; try apply IHchase; eauto.
+          induction (H i0). fcong i0 t. reflexivity.
+              fcong t1 t. firstorder.
+          induction (H i0). fcong t i0. assumption.
+              fcong t1 t. etransitivity; eauto.
+      assert (@eq nat (getF(h[x<|t|>])) (getF(h[x<|b|>]))).
+          apply Le.le_antisym; eauto.
+      rewrite H9 in *. rewrite H5 in *.
+      induction (fin_dec _ t b). rewrite a in *. firstorder.
+      etransitivity; eauto.
+Qed.
+Lemma chase_rank : forall n x h,
+                     (forall i, terminating_ascent n x h i) ->
+                     forall a b, chase n x h a b ->
+                                 (getF(h[x<|a|>])) ≤ (getF(h[x<|b|>])).
+Proof. intros. induction H0. reflexivity.
+       induction (H i). fcong t i. assumption.
+                        fcong t0 t. etransitivity; eauto.
+Qed.
+Lemma chase_rank_strict : forall n x h,
+                            (forall i, terminating_ascent n x h i) ->
+                            forall a b, a ≠ b -> chase n x h a b ->
+                                 @eq nat (getF(h[x<|a|>])) (getF(h[x<|b|>])) ->
+                                 proj1_sig (to_nat a) < proj1_sig (to_nat b).
+Proof.
+  intros. induction H1. contradiction H0; eauto.
+   induction (fin_dec _ t f). subst f. 
+       induction (H i). fcong t i. contradiction H0; eauto.
+           fcong t0 t. firstorder.
+  assert (@eq nat (getF(h[x<|i|>])) (getF(h[x<|t|>]))).
+    induction (H i). fcong t i. auto.
+         fcong t0 t. 
+         assert ((getF(h[x<|t|>])) ≤ (getF(h[x<|f|>]))).
+             apply chase_rank; eauto. eapply Le.le_antisym; eauto. rewrite H2; eauto.
+  induction (fin_dec _ i t).
+      rewrite <- a in *. clear dependent t. firstorder.
+      induction (H i). fcong t i. contradiction b0; eauto.
+      fcong t0 t.
+  etransitivity; try apply IHchase; eauto. rewrite <- H4. assumption.
+Qed.
+
+Lemma chase_dec : forall n x h i j, i≠j -> φ n x h -> chase n x h i j \/ ~chase n x h i j.
+Proof.
+  intros. generalize dependent j.
+  rename H0 into H.
+  intros j Hne.
+  induction H. intros.
+  induction (H i).
+  induction (fin_dec _ i j). subst j. left. constructor.
+                             right. intros Hbad. induction Hbad. contradiction b. auto.
+                             assert (i = t) by congruence. rewrite H2 in *. firstorder.
+  clear H1.
+  induction (fin_dec _ t j). subst j. 
+      left. eapply trans_chase; try constructor. symmetry; assumption.
+  induction (IHt b).
+  left. eapply trans_chase; eauto.
+  right.
+  intro Hbad. apply H1. 
+  clear IHt H1.
+  inversion Hbad. subst j. contradiction Hne; eauto.
+  subst j. unfold fin in *.
+  fcong t1 t. assumption.
+Qed.
+Lemma no_chase_irrefl : forall n x h i j, ~chase n x h i j -> i ≠ j.
+Proof. intros. intro Hbad. subst. apply H. constructor. Qed.
+Lemma no_chase_irrefl' : forall n x h i j, ~chase n x h i j -> j ≠ i.
+Proof. intros. intro Hbad. subst. apply H. constructor. Qed.
+
+(* When chase_dec deduces a certain index doesn't chase a path to the updated
+   array index, we simply recycle the old ascent proof *)
+Lemma unaffected_update : forall n x h f c,
+                            φ n x h ->
+                            @eq nat (getF (h[x<|f|>])) (getF (h[c])) ->
+                            forall b,
+                              ~ chase n x h b f ->
+                              terminating_ascent n (array_write x f c) h b.
+Proof.
+  intros n x h f c H Hrank.
+  destruct H.
+  intros b; induction (H b).
+     intros Hbad. apply self_ascent. rewrite read_past_updated_cell; eauto. eapply no_chase_irrefl'; eauto.
+     intros Hbad. assert (Htmp := no_chase_irrefl' _ _ _ _ _ Hbad).
+         assert (Hch : ~chase n x h t f).  eauto using no_chase_step.
+         assert (Htmp' := no_chase_irrefl' _ _ _ _ _ Hch).
+         apply trans_ascent with (t:=t); arrays h h'.
+         apply IHt; eauto.
+Qed.
+Lemma unaffected_update_le : forall n x h f c,
+                            φ n x h ->
+                            (getF (h[x<|f|>])) ≤ (getF (h[c])) ->
+                            forall b,
+                              ~ chase n x h b f ->
+                              terminating_ascent n (array_write x f c) h b.
+Proof.
+  intros n x h f c H Hrank.
+  destruct H.
+  intros b; induction (H b).
+     intros Hbad. apply self_ascent. rewrite read_past_updated_cell; eauto. eapply no_chase_irrefl'; eauto.
+     intros Hbad. assert (Htmp := no_chase_irrefl' _ _ _ _ _ Hbad).
+         assert (Hch : ~chase n x h t f).  eauto using no_chase_step.
+         assert (Htmp' := no_chase_irrefl' _ _ _ _ _ Hch).
+         apply trans_ascent with (t:=t); arrays h h'.
+         apply IHt; eauto.
+Qed.
+Lemma update_ascent : forall n x h f c jmp,
+                        φ n x h ->
+                        @eq nat (getF (h[x<|f|>])) (getF (h[c])) ->
+                        getF (h[c]) ≤ getF (h[x<|jmp|>]) ->
+                        (@eq nat (getF (h[c])) (getF (h[x<|jmp|>])) ->
+                         proj1_sig (to_nat f) < proj1_sig (to_nat jmp)) ->
+                        getF(h[c]) = jmp ->
+                        ~chase n x h jmp f ->
+                        terminating_ascent n (array_write x f c) h f.
+Proof.
+  intros.
+  assert (Htmp := no_chase_irrefl' _ _ _ _ _ H4).
+  apply trans_ascent with (t:=jmp); arrays h h'.
+  congruence.
+  eauto using unaffected_update.
+Qed.
+Lemma update_ascent_le : forall n x h f c jmp,
+                        φ n x h ->
+                        (getF (h[x<|f|>])) ≤ (getF (h[c])) ->
+                        getF (h[c]) ≤ getF (h[x<|jmp|>]) ->
+                        (@eq nat (getF (h[c])) (getF (h[x<|jmp|>])) ->
+                         proj1_sig (to_nat f) < proj1_sig (to_nat jmp)) ->
+                        getF(h[c]) = jmp ->
+                        ~chase n x h jmp f ->
+                        terminating_ascent n (array_write x f c) h f.
+Proof.
+  intros.
+  assert (Htmp := no_chase_irrefl' _ _ _ _ _ H4).
+  apply trans_ascent with (t:=jmp); arrays h h'.
+  congruence.
+  eapply unaffected_update_le; eauto.
+Qed.
+
+Lemma affected_update : forall n x h f c,
+                          φ n x h ->
+                          @eq nat (getF (h[x<|f|>])) (getF (h[c])) ->
+                          terminating_ascent n (array_write x f c) h f ->
+                          forall b,
+                            chase n x h b f ->
+                            terminating_ascent n (array_write x f c) h b.
+Proof.
+  intros n x h f c H Hrank. intros.  destruct H.
+  induction (H b).
+      induction H1; eauto.
+      induction H1; eauto. fcong i0 i. eauto. fcong i0 i. fcong t i. firstorder.
+      (* trans *)
+      induction H1; eauto. 
+      induction (fin_dec _ i f).
+          rewrite a in *. assumption.
+      fcong t1 t.
+      induction (fin_dec _ t f). rewrite a in *. clear dependent t.
+        eapply trans_ascent with (t:=f); arrays h h'; eauto.
+            rewrite <- Hrank in *. firstorder.
+            rewrite <- Hrank in *. firstorder.
+        eapply trans_ascent with (t:=t); arrays h h'; eauto.
+Qed.
+Lemma affected_update_le : forall n x h f c,
+                          φ n x h ->
+                          (getF (h[x<|f|>])) ≤ (getF (h[c])) ->
+                          terminating_ascent n (array_write x f c) h f ->
+                          forall b,
+                            chase n x h b f ->
+                            terminating_ascent n (array_write x f c) h b.
+Proof.
+  intros n x h f c H Hrank. intros.  destruct H.
+  induction (H b).
+      induction H1; eauto.
+      induction H1; eauto. fcong i0 i. eauto. fcong i0 i. fcong t i. firstorder.
+      (* trans *)
+      induction H1; eauto. 
+      induction (fin_dec _ i f).
+          rewrite a in *. assumption.
+      fcong t1 t.
+      induction (fin_dec _ t f). rewrite a in *. clear dependent t.
+        eapply trans_ascent with (t:=f); arrays h h'; eauto.
+            rewrite <- Hrank in *. firstorder.
+            intro Heq. arrays h h'. rewrite <- Heq in Hrank.
+            assert (Heq' : @eq nat (getF (h[x<|i|>])) (getF (h[x<|f|>]))).
+                eapply Le.le_antisym; eauto.
+            firstorder.
+        eapply trans_ascent with (t:=t); arrays h h'; eauto.
+Qed.
+(* TODO: Now, some of these lemmas should be provable by inducting on the use of
+   chase_dec, then in the affected cases, inducting on whether or not the affected index is the updated cell or not, then applying one of the previous 3 lemmas.
+*)
+
+Lemma chase_update_preserves_term_ascent :
+  forall h h' n x f i mid c,
+    @eq nat (getF (h[x <| f |>])) (getF (h[c])) ->
+    (forall i, terminating_ascent n x h i) ->
+    chase n x h f mid ->
+    getF (h [c]) = mid ->
+    terminating_ascent n (array_write x f c) h' i.
+Proof.
+  intros h h' n x f i mid c Hrank H.
+  intros Hc Hf.
+  induction (H i).
+  (* self *)
+  induction (fin_dec _ f i).
+      (* f = i *)
+      subst i.
+      inversion Hc.
+          apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
+          subst f0.
+              fcong t f. clear H1 H2.
+              induction (H mid).
+                (* self *)
+                induction (fin_dec _ f i). subst f. apply self_ascent. rewrite read_updated_cell. erewrite immutable_vals; eassumption.
+                
+                    exfalso. apply b. clear Hf Hrank.
+                    induction Hc; eauto.
+                    fcong t i. firstorder.
+                
+                (* trans *)
+                assert (f = i). eapply self_loop_chase; eauto.
+                rewrite H4 in *.
+                apply self_ascent; arrays h h'; eauto.
+      (* f ≠ i *)
+      apply self_ascent. rewrite read_past_updated_cell; auto. erewrite immutable_vals; eassumption; auto.
+
+  (* trans *)
+  induction (fin_dec _ f i). subst i.
+  
+  induction (fin_dec _ f mid). rewrite <- a in *. clear dependent mid.
+      apply self_ascent; arrays h h'; eauto.
+
+  apply trans_ascent with (t:=mid). rewrite read_updated_cell. 
+                                    rewrite immutable_vals with (h':=h).
+                                    rewrite <- Hf. reflexivity.
+                                    rewrite read_updated_cell.
+                                    induction (fin_dec _ f mid).
+                                      rewrite <- a. rewrite read_updated_cell. reflexivity.
+                                      rewrite read_past_updated_cell; auto.
+                                      
+                                      repeat rewrite <- immutable_vals with (h:=h)(h':=h').
+                                      rewrite <- Hrank.
+                                      assert (chase n x h t mid).
+                                          clear H1. clear IHt. clear t0.
+                                          inversion Hc. contradiction b. 
+                                          unfold fin in *. 
+                                          subst f0. 
+                                          fcong t t0. assumption.
+                                      eapply chase_rank'; auto.
+                                      rewrite H0 in H3. assumption.
+                                    
+                                    (* New case for rank= -> < *)
+                                    intro H'. arrays h h'.
+                                    rewrite read_updated_cell in H'; eauto.
+                                    rewrite read_past_updated_cell in H'; eauto.
+                                    rewrite <- Hrank in H'. 
+                                    eapply chase_rank_strict; arrays h h'; eauto.
+                                    
+                                    eapply unaffected_update.
+                                      constructor; eauto using ascend_new_heap.
+                                      arrays h h'. eauto.
+                                      intro Hbad. apply b. eapply Hdouble; eauto using chase_new_heap.
+                                      
+                                    induction (fin_dec _ f t).
+                                      rewrite a in *. clear dependent f.
+                                      apply trans_ascent with (t:= t); arrays h h'.
+                                          rewrite <- Hrank; eauto.
+                                          intro H'. apply H2. rewrite <- Hrank in *. assumption.
+                                          assumption.
+                                      apply trans_ascent with (t:=t); arrays h h'.
+                                      assumption.
+Qed.
+
 Lemma no_chase_extend : forall n x h s m,
                           chase n x h s m ->
                           forall f, ~ chase n x h s f ->
@@ -338,6 +512,7 @@ Proof.
              assert (i = t) by congruence. rewrite H4 in *. firstorder.
   (* trans *)
   intros. 
+  (* back patch *) rename H2 into Hcond. rename H3 into H2. rename H4 into H3. rename H5 into H4.
   induction H3.
     induction (fin_dec _ f t). rewrite a in *.
     exfalso. apply Hchase. eapply trans_chase; try constructor; eauto.
@@ -351,28 +526,6 @@ Proof.
   eapply no_chase_extend; try eassumption. eapply trans_chase; try solve[symmetry;eassumption]. constructor.
 Qed.
 
-Lemma chase_dec : forall n x h i j, i≠j -> φ n x h -> chase n x h i j \/ ~chase n x h i j.
-Proof.
-  intros. generalize dependent j.
-  rename H0 into H.
-  intros j Hne.
-  induction H. intros.
-  induction (H i).
-  induction (fin_dec _ i j). subst j. left. constructor.
-                             right. intros Hbad. induction Hbad. contradiction b. auto.
-                             assert (i = t) by congruence. rewrite H2 in *. firstorder.
-  clear H1.
-  induction (fin_dec _ t j). subst j. 
-      left. eapply trans_chase; try constructor. symmetry; assumption.
-  induction (IHt b).
-  left. eapply trans_chase; eauto.
-  right.
-  intro Hbad. apply H1. 
-  clear IHt H1.
-  inversion Hbad. subst j. contradiction Hne; eauto.
-  subst j. unfold fin in *. assert (t1 = t) by congruence.
-  rewrite H3 in *. assumption.
-Qed.
 
 Require Import Coq.Arith.Lt.
 Lemma stable_φ_δ : forall n, stable (φ n) (δ n).
@@ -405,6 +558,10 @@ Proof.
                 rewrite H1. reflexivity.
                 rewrite H1. rewrite H3. simpl.
                 induction H4. eauto with arith. destruct H4. subst xr'. reflexivity.
+                (* new cond case *)
+                rewrite H1. rewrite H8. simpl. intro Hcond. rewrite Hcond in *; clear dependent xr'.
+                induction H4. exfalso. eapply Lt.lt_irrefl; eauto.
+                destruct H4. assumption.
               (* Now we're pointing to y, which doesn't chase back to x in x0 *)
               eapply union_identity; eauto.
                 eapply ascend_new_heap; eauto.
@@ -439,29 +596,25 @@ Proof.
                                  arrays h h'. assert (i=t) by congruence. rewrite <- H5 in *. clear H5. clear t.
                                  firstorder.
                                  subst f. eapply lt_irrefl; eauto.
-                      (* trans *) unfold fin in *. assert (t0 = t) by congruence. rewrite H13 in *. clear H13 t0.
+                      (* trans *) fcong t0 t. 
                                  assert (getF (h[x0<|t|>]) ≤ getF (h[x0<|f|>])).
                                      induction (fin_dec _ t f). subst f. reflexivity.
                                      eapply chase_rank'; eauto.
                                      induction Hch'. exfalso; intuition.
                                        clear IHHch'.
-                                     rewrite H13. assumption.
+                                     rewrite H14. assumption.
                                  assert (getF (h[x0<|t|>]) = yr).
                                      rewrite H3 in H12.
-                                     rewrite H0 in H13. unfold getF at 2 in H13. unfold cell_rank in *.
+                                     rewrite H0 in H14. unfold getF at 2 in H14. unfold cell_rank in *.
                                      eapply le_antisym; eauto.
                                  (* Looks like I need to add a hyp to the inductive
                                     term_ascent ctor... if the ranks are = then child < parent  *)
-                                 admit.
-                    
-                    (*intro X.
-                    clear H0 H4 H1 H3 H8 H5 H6.
-                    induction (H y). 
-                      induction X. apply b; auto. unfold fin in *.
-                        arrays h h'; assert (t=i) by congruence. rewrite H3 in *.
-                        firstorder.
-                      induction (fin_dec _ i t). rewrite a in *. firstorder.
-                      (* induct on dec x t, or X, chase lemma, term_ascent, something else? *) admit.*)
+                                 rewrite H15 in *.
+                                 assert (Htmp' := chase_rank_strict n x0 h H i f).
+                                 rewrite H3 in *. rewrite H0 in *. simpl in Htmp'.
+                                 assert (proj1_sig (to_nat i) < proj1_sig (to_nat f)).
+                                     apply Htmp'; eauto. eapply trans_chase with (t0:=t); eauto.
+                                 assert (Htmp'' := Lt.lt_not_le _ _ H16). apply Htmp''. eauto with arith.
                     
                 arrays h h'; rewrite H0; reflexivity.
                 constructor.
@@ -469,7 +622,40 @@ Proof.
       (* i ≠ x *)
       einduction (chase_dec n x0 h _ _ b).
       
-        (* TODO: does chase to midpoint *) admit. (* should be as above... *)
+        eapply affected_update_le; eauto using chase_new_heap.
+            constructor. eauto using ascend_new_heap.
+            arrays h h'. rewrite H0; rewrite H1. simpl.
+            assert (Htmp := chase_rank n x0 h H i x H10).
+            assumption.
+        eapply update_ascent_le; eauto.
+            constructor; eauto using ascend_new_heap.
+            arrays h h'; rewrite H0. rewrite H6. simpl. assumption.
+            arrays h h'. rewrite H1. unfold getF at 3. unfold getF at 1. unfold cell_parent. unfold cell_rank.
+            assert (xr' ≤ yr). induction H4. eauto with arith. destruct H4. rewrite H4. reflexivity.
+            rewrite <- H8 in H11. assumption.
+            arrays h h'. repeat rewrite H1. 
+            unfold getF at 1. unfold getF at 2. unfold cell_rank; unfold cell_parent.
+            intro Heq. assert (xr' = yr). rewrite <- H8. assumption.
+            rewrite H11 in *. unfold getF.
+            induction H4. exfalso; eapply Lt.lt_irrefl; eauto. destruct H4. assumption.
+            arrays h h'; rewrite H1. simpl.
+            intro Hbad.
+            assert (getF(h[x0<|y|>]) ≤ getF(h[x0<|x|>])).
+                eapply chase_rank; eauto using ascend_new_heap, chase_new_heap.
+            arrays h h'. rewrite H8 in H11. rewrite H0 in H11. simpl in H11.
+            assert (xr = yr). eapply Le.le_antisym; eauto.
+            subst xr.
+            induction H4. 
+                assert (Htmp := Lt.lt_not_le _ _ H4). firstorder.
+                destruct H4. subst xr'.
+                assert (Htmp := Lt.lt_not_le _ _ H12). apply Htmp.
+                Check chase_rank_strict.
+                assert (proj1_sig (to_nat y) < proj1_sig (to_nat x)).
+                    eapply chase_rank_strict; eauto.
+                    induction (fin_dec _ y x); eauto. subst x. exfalso. apply Htmp. reflexivity.
+                    eapply chase_new_heap; eauto.
+                    arrays h h'. rewrite H8. rewrite H0. reflexivity.
+                    eauto with arith.
       
         eapply union_identity; eauto.
           eapply ascend_new_heap; eauto.
@@ -479,96 +665,6 @@ Proof.
 
           constructor. assumption.
 
-          (*
-      (* TODO: It may be worth proving a separate lemma that ascent is preserved for anything reachable from y in the original *)
-      
-      induction (fin_dec _ x i).
-
-      induction (H i).
-      (* originally self-ascent *)
-          induction (fin_dec _ x i).
-            subst x. (* remapping the updated cell itself *)
-            apply trans_ascent with (t:=y); arrays h h'; try rewrite H6; eauto.
-              induction (fin_dec _ y i). subst y; arrays h h'. rewrite H1. reflexivity.
-                                         arrays h h'. rewrite H8. simpl.
-                                         induction H4. eauto with arith.
-                                         destruct H4. subst xr'. reflexivity.
-              induction (fin_dec _ y i). subst y; arrays h h'. 
-                                         apply self_ascent; arrays h h'. rewrite H6; auto.
-                        induction (H y). apply self_ascent; arrays h h'.
-                            induction (fin_dec _ i t).
-                                         subst i. 
-                                         (* i = t should be a contradiction:
-                                            i0 -> t, t -> t, and we just made
-                                            x0<|t↦c|><|t|> = mkCell xr' i0, tying a cycle. *)
-                                         arrays h h'.
-                                         rewrite H5 in H12. rewrite H8 in H12. simpl in H12.
-                                         induction H4. 
-                                         assert (xr < yr). eauto with arith.
-                                         assert (xr ≤ yr). eauto with arith.
-                                         Require Import Coq.Arith.Le.
-                                         assert (xr = yr). eauto using le_antisym.
-                                         subst xr. exfalso. eapply lt_irrefl. eassumption.
-                                         destruct H4. subst yr.
-                                         rewrite <- H4 in H12.
-                                         assert (xr = xr'). eauto using le_antisym. subst xr.
-                                     apply trans_ascent with (t:=t); arrays h h'.
-                                       rewrite H1. rewrite <- H4. reflexivity.
-                                       
-                                     eapply trans_ascent; eauto.
-
-                                     admit.
-                             apply trans_ascent with (t:=t); arrays h h'.
-                               assert (getF (h'[c]) = i0). rewrite H1. reflexivity.
-                               eapply union_identity; try apply H13; eauto.
-                               eapply ascend_new_heap; eauto.
-                               (* Seems like we don't know union_identity is applicable here... can't invalidate this chase *) admit.
-                               constructor.
-                               (*eapply trans_chase. constructor. subst t. reflexivity.*)
-                               apply self_ascent; arrays h h'; eauto.
-    (* originally trans *)
-    induction (fin_dec _ x i).
-        subst x.
-        induction (fin_dec _ y i). subst y.
-          apply self_ascent; arrays h h'. rewrite H1. reflexivity.
-        
-        apply trans_ascent with (t:=y); arrays h h'; eauto. rewrite H1. reflexivity.
-        rewrite H1. rewrite H8. simpl. 
-        induction H4. eauto with arith. destruct H4; subst xr'; reflexivity.
-        eapply union_identity. Focus 4. rewrite H0. reflexivity.
-          Focus 2. eapply ascend_new_heap; eauto. 
-          intuition. simpl. eapply ascend_new_heap; eauto.
-          simpl. constructor. intuition.
-
-    apply trans_ascent with (t:=t); arrays h h'; eauto.
-        induction (fin_dec _ x t); try subst x; arrays h h'.
-        rewrite H1. rewrite H5 in H11. etransitivity; eauto.*)
-(*
-      rewrite immutable_vals with (h' := h') in H1.
-      
-      intros.
-      induction (fin_dec n x i). subst x.
-      generalize dependent i.
-          induction (H y); intros.
-              apply trans_ascent with (t := i);
-                try rewrite read_updated_cell; eauto;
-                try rewrite H1; eauto.
-              rewrite read_past_updated_cell. rewrite immutable_vals with (h':= h') in H3.
-                rewrite H3. simpl. induction H5. eauto with arith. destruct H5. subst xr'. reflexivity.
-          intros Hbad. subst i. (*rewrite H2 in H0.*)
-          assert (Hcontra := lt_irrefl). unfold not in Hcontra.
-          assert (Hcontra' := le_not_lt). unfold not in Hcontra'.
-          rewrite H4 in *. simpl in *. subst yr.
-          induction H5. firstorder. destruct H3. firstorder.
-              apply self_ascent.
-              rewrite read_past_updated_cell. rewrite <- immutable_vals with (h:=h). auto.
-          intros Hbad. subst i. (*rewrite H2 in H0.*)
-          assert (Hcontra := lt_irrefl). unfold not in Hcontra.
-          assert (Hcontra' := le_not_lt). unfold not in Hcontra'.
-          rewrite H4 in *. simpl in *. subst yr.
-          induction H5. firstorder. destruct H3. firstorder.
-*)
-      
   (* Rank bump *)
   constructor. intros. destruct H.
   induction (fin_dec n x i).
@@ -588,6 +684,15 @@ Proof.
       unfold getF at 2. unfold cell_rank.
       unfold getF at 2 in H4. unfold cell_rank in H4.
       etransitivity. eassumption. eauto.
+      
+      (* new conditional goal *)
+      arrays h h'. intro Heq. rewrite H2 in Heq. unfold getF at 2 in Heq. unfold cell_rank in *.
+      rewrite Heq in *. rewrite H0 in *. unfold getF in H4. unfold getF in H5.
+      rewrite Lt.le_lt_or_eq_iff in H1.
+      induction H1.
+          apply H5. eapply Le.le_antisym; eauto with arith.
+          subst xr'. firstorder.
+
       apply self_ascent. rewrite read_updated_cell; eauto. 
           rewrite immutable_vals with (h' := h') in H2.
           rewrite H2. reflexivity.
@@ -600,6 +705,9 @@ Proof.
       rewrite read_past_updated_cell; eauto.
       etransitivity. eassumption. rewrite immutable_vals with (h' := h').
       reflexivity.
+      
+      (* new conditional goal *)
+      arrays h h'.
 Qed.
 Hint Resolve stable_φ_δ.
 
@@ -613,7 +721,9 @@ Proof.
   eapply trans_ascent. rewrite <- H0; eauto.
   constructor. compute. eexists; reflexivity.
   rewrite <- immutable_vals with (h:=h). etransitivity. eassumption.
-  rewrite immutable_vals with (h':=h'). reflexivity. assumption.
+  rewrite immutable_vals with (h':=h'). reflexivity. 
+  intro. arrays h h'. eauto.
+  assumption.
 Qed.
 Lemma precise_chase : forall n i j, precise_pred (fun x h => chase n x h i j).
 Proof.  
