@@ -52,12 +52,15 @@ Notation "share_field_CAS( r → f , e , e' , v , mem )" :=
 
 
 Axiom field_cas_share' : forall {Γ T P R G F FT} `{FieldTyping T F}
-                               {aT aP aR aG aP' aR' aG'}
+                               {aT aP}{aR aG:hrel aT}{aP'}{aR' aG':hrel aT}
                                (v:var)
                                 (mem:tymember v (ref{aT|aP}[aR,aG]) Γ),
                                 aP⊑aP' -> (* refinement weakening *)
                                 aG'⊆aG -> (* permission weakening *)
-                                aR⊆aR' -> (* interference weakening *)
+                                (* aR⊆aR' -> (* interference weakening *) *)
+                                (forall a a' h h',
+                                   aP a h -> aR a a' h h' -> aR' a a' h h'
+                                ) -> (* refined interference weakening *)
                                 aG'⊆aR' -> (* self-splitting *)
                                 stable aP' aR' ->
                                 forall xP xR xG (l:ref{aT|xP}[xR,xG]),

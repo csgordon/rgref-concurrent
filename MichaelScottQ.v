@@ -133,7 +133,11 @@ Lemma precise_valid_node : precise_pred validNode'.
   eapply IHvalidNode'. intros.
   Require Import Coq.Program.Equality.
   dependent induction H1.
-    (** Messy contradiction; dep. induction tried to use the reflexive reachability for things w/ wrong types *)
+    (** Messy contradiction; dep. induction tried to use the reflexive reachability
+        for things w/ wrong types.  I suspect this would be a non-issue if
+        I could properly define Node with its predicates and relations as an
+        inductive-inductive datatype, as dependent induction doesn't typically
+        generate these kinds of obligations. *)
     assert (ref{T|P'}[R',G'] = Node -> False) by admit. (*OK*) exfalso. firstorder.
     eapply H0. eapply trans_reachable with (i := tl). constructor. eapply directly_reachable. assumption.
     eapply H0. clear IHreachable_from_in. eapply trans_reachable with (i := tl). constructor. eapply trans_reachable with (i := i); eauto.
@@ -286,7 +290,10 @@ Next Obligation.
      except readable doesn't contain the recursive pointers of a full option field.
      Really, we're in a case where given the refinement (x=e) the implication is
      true. *)
-  (* TODO: Change the LinAlloc rely to local_imm to avoid deeper heap reasoning... *) Admitted.
+  destruct H0. subst a. compute in H1. subst a'. 
+  destruct delta_eq.
+  apply H1. constructor.
+Qed.
 Next Obligation. (* deltaNode *)
   intros. destruct delta_eq. apply H5.
   destruct (destruct_node v) as [n' [tl' H']]. rewrite H' in *. clear H'.
