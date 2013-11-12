@@ -61,6 +61,10 @@ CoInductive refines {A:Set} : relation (@trace A) :=
                                     refines (remote a ~~> star (remote a)) (remote a)
   | refine_add_tail : forall R, refines R (R~~>ε)
   | refine_drop_tail : forall R, refines (R~~>ε) R
+  | refine_choice : forall Q R S, refines Q S -> refines R S -> refines (choice Q R) S
+  | refine_bind_l : forall (T:Set) (f:T->trace) Q, (forall t, refines (f t) Q) -> refines (bind f) Q
+  | refine_bind_r : forall (T:Set) (f:T->trace) Q, (forall t, refines Q (f t)) -> refines Q (bind f)
+  | refine_bind_b : forall (T:Set) (f g:T->trace), (forall t, refines (f t) (g t)) -> refines (bind f) (bind g)
 .
 Infix "≪" := (refines) (at level 63).
 CoInductive trace_equiv {A:Set} : relation (@trace A) :=
@@ -235,7 +239,6 @@ Module TreiberRefinements.
   Example push_spec (q:ts) n :=
     (remote (deltaTS@q))~~>(local ((push_op n)@q))~~>(result tt)~~>(remote (deltaTS@q))~~>ε.
   
-  Axiom refine_choice : forall A (Q R S:@trace A), Q ≪ S -> R ≪ S -> (choice Q R) ≪ S.
   
   Lemma push_refine : forall q n, example_push_trace q n ≪ push_spec q n.
   Proof.
@@ -270,10 +273,6 @@ Module TreiberRefinements.
                                                     x=(Some hd) /\ (h[hd])=(mkNode n hd').
   Example pop_spec (q:ts)  :=
     (remote (deltaTS@q))~~>(ζ v => (local ((pop_op v)@q))~~>(remote (deltaTS@q))~~>(result v)).
-  
-  Axiom refine_bind_l : forall (A T:Set) (f:T->(@trace A)) Q, (forall t, (f t) ≪ Q) -> (bind f) ≪ Q.
-  Axiom refine_bind_r : forall (A T:Set) (f:T->(@trace A)) Q, (forall t, Q ≪ (f t)) -> Q ≪ (bind f).
-  Axiom refine_bind_b : forall (A T:Set) (f g:T->(@trace A)), (forall t, f t ≪ g t) -> bind f ≪ (bind g).
   
   CoFixpoint sample_pop_trace (q:ts) :=
     (remote (deltaTS@q))~~>
