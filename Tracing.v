@@ -323,33 +323,37 @@ Module TreiberRefinements.
   Definition pop_op n x hd' (h h':heap) := exists (hd:ref{Node|any}[local_imm,local_imm]),
                                                     x=(Some hd) /\ (h[hd])=(mkNode n hd').
   Example pop_spec (q:ts)  :=
-    (remote (deltaTS@q))~~>(ζ v => (local ((pop_op v)@q))~~>(remote (deltaTS@q))~~>(result v)).
+    (remote (clos_refl_trans _ (deltaTS@q)))~~>(ζ v => (local ((pop_op v)@q))~~>(remote (clos_refl_trans _ (deltaTS@q)))~~>(result v)).
   
   CoFixpoint sample_pop_trace (q:ts) :=
-    (remote (deltaTS@q))~~>
+    (remote (clos_refl_trans _ (deltaTS@q)))~~>
     (local (clos_refl_trans _ eq))~~>
-    (remote (deltaTS@q))~~>
+    (remote (clos_refl_trans _ (deltaTS@q)))~~>
     (choice ((local (clos_refl_trans _ eq))~~>(sample_pop_trace q))
-            (ζ v => (local ((pop_op v)@q))~~>(remote (deltaTS@q))~~>result v)).
+            (ζ v => (local ((pop_op v)@q))~~>(remote (clos_refl_trans _ (deltaTS@q)))~~>result v)).
   
   Example pop_test : forall q, sample_pop_trace q ≪ pop_spec q.
   Proof.
     intros.
     cofix.
     unfold pop_spec.
-    rewrite (trace_dup_eq _ (sample_pop_trace q)).
+    match goal with [ |- refines ?x ?y ] => (rewrite (trace_dup_eq _ x); rewrite (trace_dup_eq _ y)) end.
     compute[sample_pop_trace trace_dup]. fold sample_pop_trace.
-    etransitivity. apply refine_reassoc. etransitivity. apply refine_left. apply refine_merge_passive_l.
-    etransitivity. apply refine_reassoc. etransitivity. apply refine_left. apply refine_merge_remote_trans.
-    (** TODO: again, deltaTS isn't actually transitive, we should be using refl-trans-clos *) clear pop_test. admit.
-    constructor.
+    eapply refine_trans. apply refine_reassoc. eapply refine_trans. apply refine_left. apply refine_merge_passive_l.
+    eapply refine_trans. apply refine_reassoc. eapply refine_trans. apply refine_left. apply refine_merge_remote_trans.
+    eauto using preord_trans, clos_rt_is_preorder.
+    eapply refine_trans. eapply refine_equiv_l. apply teq_choice_inline1. reflexivity.
     apply refine_choice.
-    (** TODO: again, coIH is slightly mismatched... *) clear pop_test. admit.
-  
-    (** could actually use reflexivity here, but I'd rather play with the bind axioms. *)
-    apply refine_bind_b. intros. repeat constructor.
+
+    eapply refine_trans. apply refine_reassoc.
+    eapply refine_trans. apply refine_left. apply refine_merge_passive_l.
+    eapply refine_trans. Focus 2. apply refine_left.
+      apply refine_merge_remote_trans; eauto using preord_trans, clos_rt_is_preorder.
+    eapply refine_trans. Focus 2. apply refine_reassoc.
+    constructor. fold (pop_spec q). apply pop_test. Guarded.
+
+    reflexivity.
   Qed.
-  (* TODO: Should ζ / bind use existential instead of universal? *)
 End TreiberRefinements.
 
   
