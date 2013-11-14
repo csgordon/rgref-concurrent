@@ -223,38 +223,8 @@ Proof.
 Qed.
   (** To do much more with setoids, we need to be able to rewrite inside trace
      constructors, which means a Proper instance for each constructor... *)
-
-
-(** No Solution Yet:
-    1. Allocations / multiple shared objects: commutativity, thread-locality, etc.
-    2. Reachability: e.g., handling update at tail as an update viewed through the head
-      Might consider a refinement axiom like:
-      ∀ ℓ₀, (ℓ:ref{T|P}[R,G]), imm_reachable_from ℓ h[l₀] -> 
-          (∀ h h', G'@ℓ h h' -> G''@ℓ₀ h h') ->
-          G'@ℓ ≪ G''@ℓ₀
-      Not sure where that initial outer h comes from, or where we'd get the reachability result.
-      I think the hindsight paper set example might be the only example we really need this for,
-      unless we do get around to the tail pointer in the MSQ.
-*)
-
-
-Module TreiberRefinements.
-  Require Import TrieberStack.
-  Definition push_op n (o o':option (ref{Node|any}[local_imm,local_imm])) (h h':heap) : Prop :=
-    exists hd, exists hd', h'[hd']=(mkNode n hd) /\ o=hd /\ o'=(Some hd').
-  CoFixpoint example_push_trace (q:ts) (n:nat) :=
-    (remote (clos_refl_trans _ (deltaTS@q)))~~>
-    (local (clos_refl_trans _ eq))~~>
-    (remote (clos_refl_trans _ (deltaTS@q)))~~>
-    (** TODO: allocation followed by more interference? on structure + new allocation? *)
-    (choice ((local (clos_refl_trans _ eq))~~>(example_push_trace q n))
-            ((local ((push_op n)@q))~~>(result tt)))~~>
-    (remote (clos_refl_trans _ (deltaTS@q))) (* TODO: and interfere on new allocation...? *)
-  .
   
-  Example push_spec (q:ts) n :=
-    (remote (clos_refl_trans _ (deltaTS@q)))~~>(local ((push_op n)@q))~~>(result tt)~~>(remote (clos_refl_trans _ (deltaTS@q))).
-  
+  (** Apparently using setoids or even etransitivity throws off the productivity checker *)
   Axiom break_productivity_checker : forall T, T -> T.
   Lemma refine_refl : forall A, @refines A ε ε.
     Proof. intros. cofix.
@@ -266,11 +236,27 @@ Module TreiberRefinements.
            (* BAD???: 
            setoid_rewrite (trace_dup_eq _ _). simpl. eapply refine_trans; eassumption. Guarded. *)
     Qed.
+
+Module TreiberRefinements.
+  Require Import TrieberStack.
+  Definition push_op n (o o':option (ref{Node|any}[local_imm,local_imm])) (h h':heap) : Prop :=
+    exists hd, exists hd', h'[hd']=(mkNode n hd) /\ o=hd /\ o'=(Some hd').
+  CoFixpoint example_push_trace (q:ts) (n:nat) :=
+    (remote (clos_refl_trans _ (deltaTS@q)))~~>
+    (local (clos_refl_trans _ eq))~~>
+    (remote (clos_refl_trans _ (deltaTS@q)))~~>
+    (choice ((local (clos_refl_trans _ eq))~~>(example_push_trace q n))
+            ((local ((push_op n)@q))~~>(result tt)))~~>
+    (remote (clos_refl_trans _ (deltaTS@q))) 
+  .
+  
+  Example push_spec (q:ts) n :=
+    (remote (clos_refl_trans _ (deltaTS@q)))~~>(local ((push_op n)@q))~~>(result tt)~~>(remote (clos_refl_trans _ (deltaTS@q))).
   
   Lemma push_refine : forall q n, example_push_trace q n ≪ push_spec q n.
   Proof.
     intros.
-    cofix. (** If I admit, must clear coIH first, since otherwise the resulting partial term looks unguarded. *)
+    cofix.
     rewrite (trace_dup_eq _ (example_push_trace q n)).
     rewrite (trace_dup_eq _ ).
     compute[example_push_trace trace_dup push_spec].
@@ -355,6 +341,9 @@ Module TreiberRefinements.
     reflexivity.
   Qed.
 End TreiberRefinements.
+
+
+
 
   
 Require Import RGref.DSL.Fields.
