@@ -518,7 +518,6 @@ Axiom hoist : forall {Q T : Set}{f:Q->@trace T}{C : @trace T -> Prop},
    Guarded. 
   Qed.
     
-
   
 Inductive FieldReach (T:Set)`{ImmediateReachability T}{P R G}{F:Set}
                          (f:F)`{FieldType T _ f (option (ref{T|P}[R,G]))} (h:heap) 
@@ -573,9 +572,19 @@ Class HindsightField (A:Set){F:Set}`{ImmediateReachability A}`{FieldTyping A F} 
      saying it was reachable in h and unreachable in h', R h h'.  But there's
      no good choice for that R... *)
   (* If a node is exterior, it never becomes a backbone again *)
-  δe : False;
+  δe : forall (r e:ref{A|P}[R,R]) h h',
+         FieldReach A f h r e ->
+         (exists m, FieldReach A f h r m /\ R (h[m]) (h'[m]) h h') ->
+         ~FieldReach A f h' r e ->
+         forall m', FieldReach A f h' r m' ->
+                    forall h'', R (h'[m']) (h''[m']) h' h'' ->
+                                ~FieldReach A f h'' r e;
   (* If a node is exterior, its next field never changes again *)
-  δen : False;
+  δen : forall (r e:ref{A|P}[R,R]) h h',
+         FieldReach A f h r e ->
+         (exists m, FieldReach A f h r m /\ R (h[m]) (h'[m]) h h') ->
+         ~FieldReach A f h' r e ->
+         forall h'', R (h'[e]) (h''[e]) h' h'' -> getF (h'[e]) = getF (h''[e]);
   (* If the next field of a backbone node changes, it must remain a backbone *)
   δbn : forall (r t:ref{A|P}[R,R]) x x' h h',
           h[t]=x -> h' = heap_write t x' h ->
@@ -622,7 +631,34 @@ Instance hsf_Node : HindsightField Node :=
       exists f'. split; eauto.
           eapply step_hsr'. eassumption. rewrite <- H.
           solve[compute; rewrite compute_node_rect; eauto].
-  (* δe, δen *) admit. admit.
+  (* δe : becoming a non-backbone is not possible with the MSQ *) 
+  intros. destruct H0. destruct H0.
+  exfalso. apply H1. clear H3 h'' H2 m'.
+  induction H. constructor.
+  assert (getF (h'[y]) = Some z).
+      assert (stable (λ x h, getF x = Some z) deltaNode).
+          destruct delta_eq.
+          red. intros. specialize (H3 _ _ _ _ H7). clear H5 H7.
+          induction H3; compute in H6; rewrite compute_node_rect in H6; inversion H6. 
+              compute; rewrite compute_node_rect. reflexivity.
+      eapply always with (P' := (λ x h, getF x = Some z))(h:=h); eauto.
+  eapply step_hsr; eauto. apply IHFieldReach; eauto.
+  intro Hbad. apply H1. eapply step_hsr; eauto.
+
+  (* δen : also contradiction *)
+  intros. destruct H0. destruct H0.
+  exfalso. apply H1. clear H2 h''.
+  induction H. constructor.
+  assert (getF (h'[y]) = Some z).
+      assert (stable (λ x h, getF x = Some z) deltaNode).
+          destruct delta_eq.
+          red. intros. specialize (H4 _ _ _ _ H7). clear H5 H7.
+          induction H4; compute in H6; rewrite compute_node_rect in H6; inversion H6. 
+              compute; rewrite compute_node_rect. reflexivity.
+      eapply always with (P' := (λ x h, getF x = Some z))(h:=h); eauto.
+  eapply step_hsr; eauto. apply IHFieldReach; eauto.
+  intro Hbad. apply H1. eapply step_hsr; eauto.
+
   (* δbn *)
   intros. destruct H1 as [v [Hne He]].
   destruct delta_eq.
