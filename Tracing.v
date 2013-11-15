@@ -62,11 +62,18 @@ CoInductive refines {A:Set} : relation (@trace A) :=
   | refine_add_tail : forall R, refines R (R~~>ε)
   | refine_drop_tail : forall R, refines (R~~>ε) R
   | refine_choice : forall Q R S, refines Q S -> refines R S -> refines (choice Q R) S
-  | refine_bind_l : forall (T:Set) (f:T->trace) Q, (forall t, refines (f t) Q) -> refines (bind f) Q
-  | refine_bind_r : forall (T:Set) (f:T->trace) Q, (forall t, refines Q (f t)) -> refines Q (bind f)
-  | refine_bind_b : forall (T:Set) (f g:T->trace), (forall t, refines (f t) (g t)) -> refines (bind f) (bind g)
-                                                                                               | refine_equiv_l : forall X Y Z, trace_equiv X Y -> refines Y Z -> refines X Z
-                                                                                               | refine_equiv_r : forall X Y Z, trace_equiv Y Z -> refines X Y -> refines X Z
+  | refine_bind_l : forall (T:Set) (f:T->trace) Q, (exists t, refines (f t) Q) -> refines (bind f) Q
+  | refine_bind_r : forall (T:Set) (f:T->trace) Q, (exists t, refines Q (f t)) -> refines Q (bind f)
+  | refine_bind_b : forall (T:Set) (f g:T->trace), (exists t, refines (f t) (g t)) -> refines (bind f) (bind g)
+                                                                                       | refine_equiv_l : forall X Y Z, trace_equiv X Y -> refines Y Z -> refines X Z
+                                                                                       | refine_equiv_r : forall X Y Z, trace_equiv Y Z -> refines X Y -> refines X Z
+                                                                                       | refine_drop_passive_l : forall (R:relation heap) X, (forall h h', R h h' -> h=h') -> refines ((local R)~~>X) X
+                                                                                       | refine_add_refl_r : forall (R:relation heap) X, (forall h, R h h) -> refines X (X~~>(remote R))
+                                                                                       | refine_add_refl_r' : forall (R:relation heap) X, (forall h, R h h) -> refines (X~~>(remote R)) X
+                                                                                       (** This is far more convenient as an axiom over Props, but that breaks
+      the productivity check for coinductive proofs. *)
+  |  refine_hoist : forall {Q:Set}{f:Q->@trace A}{C:trace->trace} X,
+                           (forall q, refines (C (f q)) X) -> refines (C (bind f)) X
 with trace_equiv {A:Set} : relation (@trace A) :=
   | teq_refl : forall R, trace_equiv R R
   | teq_trans : forall X B C, trace_equiv X B -> trace_equiv B C -> trace_equiv X C
@@ -226,7 +233,7 @@ Qed.
   
   (** Apparently using setoids or even etransitivity throws off the productivity checker *)
   Axiom break_productivity_checker : forall T, T -> T.
-  Lemma refine_refl : forall A, @refines A ε ε.
+  Lemma check_productivity : forall A, @refines A ε ε.
     Proof. intros. cofix.
            (* BAD: rewrite (trace_dup_eq _ _). simpl. assumption. *)
            (* BAD: rewrite (trace_dup_eq _ _). simpl. apply break_productivity_checker. eapply refine_trans; eassumption. *)
@@ -343,58 +350,332 @@ Module TreiberRefinements.
 End TreiberRefinements.
 
 
+Require Import MichaelScottQ.
+Require Import RGref.DSL.Fields.
 
+  Definition dq_op (sent hd : noderef) : hrel MSQ :=
+    λ x x' h h', x = mkMSQ sent /\ x' = mkMSQ hd /\
+                 getF (h[sent]) = Some hd.
+
+  (* TODO: Missing some interference *)
+  CoFixpoint dq_trace (q:msq) : @trace (option nat) :=
+    (remote (clos_refl_trans _ (δmsq@q)))~~>
+    (ζ sent => (local (witness (λ x h, x=mkMSQ sent) q))~~>
+    (ζ x => (local (witness (λ y h, @eq nat (getF y) x) sent))~~>
+    (ζ o => (local (witness (λ y h, match o with None => getF y = None 
+                                                | Some hd => @eq (option _) (getF y) (Some hd) end) sent))~~>
+    match o with
+    | None => result None
+    | Some hd => 
+      (ζ n => (local (witness (λ x h, getF x = n) hd))~~>
+              choice ((local (clos_refl_trans _ eq))~~>dq_trace q)
+                     ((local ((dq_op sent hd)@q))~~>result (Some n)))
+    end ~~>
+    (remote (clos_refl_trans _ (δmsq@q)))
+    ))).
+  Definition dq_spec (q:msq) : @trace (option nat) :=
+    (remote (clos_refl_trans _ (δmsq@q)))~~>
+    (ζ sent => (local (witness (λ x h, x = mkMSQ sent) q))~~>
+    (ζ o => (local (witness (λ y h, getF y = o) sent))~~>
+            match o with
+            | None => result None
+            | Some hd => 
+              (ζ n => (local (witness (λ x h, @eq nat (getF x) n) hd))~~>
+                      (local ((dq_op sent hd)@q))~~>result (Some n))
+            end)~~>
+    (remote (clos_refl_trans _ (δmsq@q)))).
+Axiom hoist : forall {Q T : Set}{f:Q->@trace T}{C : @trace T -> Prop},
+                        (forall q, C (f q)) -> C (bind f).
+  Lemma dq_satisfies_spec : forall q, dq_trace q ≪ dq_spec q.
+  Proof.
+    intros. cofix.
+    rewrite (trace_dup_eq _ (dq_trace _)).
+    rewrite (trace_dup_eq _ ).
+    compute[trace_dup dq_trace dq_spec].
+    fold dq_trace.
+    eapply refine_hoist. intro sent.
+    Check refine_hoist.
+    eapply @refine_hoist with (C:=λ t, remote (clos_refl_trans heap (δmsq @ q))~~> local (witness (λ x h, x = mkMSQ sent) q) ~~> t).
+    intro x.
+    eapply @refine_hoist 
+    with (C:=λ t,  remote (clos_refl_trans heap (δmsq @ q))~~> local (witness (λ x h, x = mkMSQ sent) q) ~~> local (witness (λ y h, getF y = x) sent) ~~> t).
+    intro o.
+    induction o.
+    (* Some *)
+        (* We're going to pull the choice operator to the top level, then split *)
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_right. eapply refine_equiv_l. eapply teq_append_binder. reflexivity.
+        eapply refine_equiv_l. eapply teq_lift_binder.
+        eapply @refine_hoist with (C:=λ t, t). intro n.
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_left. 
+            eapply refine_trans. eapply refine_reassoc.
+            eapply refine_equiv_l. eapply teq_choice_inline1.
+            reflexivity.
+        eapply refine_equiv_l. eapply teq_choice_inline2.
+        constructor.
+        (* corecursive case *)
+        eapply refine_trans. apply refine_right. eapply refine_equiv_l.
+            apply teq_remote_trans.
+            eauto using preord_trans, clos_rt_is_preorder.
+        apply refine_refl.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        
+        eapply refine_trans. Focus 2. apply refine_left.
+            eapply refine_equiv_r. apply teq_sym. apply teq_remote_trans.
+            eauto using preord_trans, clos_rt_is_preorder.
+            reflexivity. 
+        eapply refine_trans. Focus 2. apply refine_reassoc.
+        apply refine_right. 
+        
+        
+        fold (dq_spec q).
+        Guarded.
+        assert (dq_spec q ~~> remote (clos_refl_trans _ (δmsq@q)) ≪ dq_spec q).
+            clear dq_satisfies_spec. 
+            unfold dq_spec.
+            eapply refine_trans. apply refine_reassoc'.
+            apply refine_right.
+            eapply refine_trans. eapply refine_equiv_l. eapply teq_append_binder. apply refine_refl.
+            apply @refine_hoist with (C:=λ t,t). intro sent'.
+            apply refine_bind_r. exists sent'.
+            eapply refine_trans. apply refine_reassoc'.
+            apply refine_right.
+            eapply refine_trans. apply refine_reassoc'.
+            eapply refine_trans. eapply refine_equiv_l. eapply teq_append_binder. apply refine_refl.
+            eapply refine_trans. Focus 2. eapply refine_equiv_r. apply teq_shrink_binder. apply refine_refl.
+            apply @refine_hoist with (C:=λ t,t). intro o'.
+            apply refine_bind_r. exists o'.
+            apply refine_right.
+            eapply refine_equiv_l. apply teq_sym. apply teq_remote_trans.
+                eauto using preord_trans, clos_rt_is_preorder.
+            apply refine_refl.
+
+        Guarded.
+        eapply refine_trans; try apply H.
+        Guarded.
+
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans.  apply refine_right. eapply refine_trans. apply refine_reassoc'. eapply refine_trans. apply refine_right. eapply refine_trans. apply refine_right.
+            eapply refine_equiv_l. apply teq_sym. apply teq_remote_trans.
+            eauto using preord_trans, clos_rt_is_preorder.
+            apply refine_refl. 
+            apply refine_refl. 
+            apply refine_refl. 
+        eapply refine_trans. apply refine_reassoc.
+        eapply refine_trans. apply refine_reassoc.
+        Guarded.
+
+        apply refine_left.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_drop_passive_l. compute; intuition.
+        eapply refine_trans. apply refine_drop_passive_l. compute; intuition.
+        eapply refine_trans. apply refine_drop_passive_l. compute; intuition.
+        eapply refine_trans. apply refine_drop_passive_l. compute; intuition.
+        eapply refine_trans. apply refine_drop_passive_l. compute; intuition.
+            induction H0; eauto. subst. reflexivity.
+        Guarded.
+        apply dq_satisfies_spec.
+        Guarded.
+
+        (* empty queue case *)
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        eapply refine_trans. apply refine_reassoc'.
+        constructor.
+        apply refine_bind_r. exists sent. constructor.
+        eapply refine_trans. Focus 2. eapply refine_equiv_r.
+            eapply teq_shrink_binder. reflexivity.
+        apply refine_bind_r. exists (Some a).
+        etransitivity. eapply refine_drop_passive_l. compute; intros. destruct H; eauto.
+        etransitivity. Focus 2. apply refine_reassoc.
+        apply refine_right.
+        eapply refine_equiv_r. eapply teq_shrink_binder.
+        apply refine_bind_r. exists n.
+        etransitivity. Focus 2. apply refine_reassoc.
+        constructor.
+
+    (* None *) constructor.
+               apply refine_bind_r. exists sent. constructor.
+               eapply refine_equiv_r. eapply teq_shrink_binder.
+               eapply refine_bind_r. exists None.
+               eapply refine_equiv_r. apply teq_assoc1.
+               eapply refine_drop_passive_l.
+               intros. compute in H. destruct H; eauto.
+   Guarded. 
+  Qed.
+    
 
   
-Require Import RGref.DSL.Fields.
-Class HindsightField (A:Set){F:Set}`{ImmediateReachability A}`{FieldTyping A F} :=
-{
-  f : F
-  (* TODO: extend to a concrete P R G, impose proofs of
-     various hindsight properties on them, FieldType A f ref{...} *)
-}.
-(* Reachability, constrained to the hindsight field *)
 Inductive FieldReach (T:Set)`{ImmediateReachability T}{P R G}{F:Set}
-                         (f:F)`{FieldType T _ f (ref{T|P}[R,G])} (h:heap) 
+                         (f:F)`{FieldType T _ f (option (ref{T|P}[R,G]))} (h:heap) 
     : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Prop :=
 | imm_hsr : forall r, FieldReach T f h r r
 | step_hsr : forall x y z, FieldReach T f h x y ->
-                           getF (h[y]) = z ->
+                           getF (h[y]) = Some z ->
                            FieldReach T f h x z
 .
-Definition HindsightReach (T:Set){P R G}`{HindsightField T}`{FieldType T _ f (ref{T|P}[R,G])}
-                          (h:heap)(src dst:ref{T|P}[R,G]) : Prop :=
-  FieldReach T f h src dst.
-  
+Lemma step_hsr' : forall T `{ImmediateReachability T}{P R G}{F:Set}(f:F)
+                         `{FieldType T _ f (option (ref{T|P}[R,G]))} (h:heap),
+                    forall x y z, FieldReach T f h y z ->
+                                  getF(h[x]) = Some y ->
+                                  FieldReach T f h x z.
+Proof.
+  intros.
+  induction H2.
+      eapply step_hsr; eauto. constructor.
+      specialize (IHFieldReach H3). eapply step_hsr; eauto.
+Qed.
 
-(* TODO: Does this need to be coinductive for elim purposes?  Each observation will be finite... *)
-Inductive temporal_backbone {T P R G}{F:Set}`{hsf:HindsightField (F:=F) T}`{FieldType T F f (ref{T|P}[R,G])}
+Class HindsightField (A:Set){F:Set}`{ImmediateReachability A}`{FieldTyping A F} :=
+{
+  f : F;
+  P : hpred A;
+  R : hrel A;
+  ft : FieldType A F f (option (ref{A|P}[R,R]));
+  (* For the hindsight lemma to be applicable, the field must evolve according
+     to some restrictions.  The Hindsight paper itself assumes a shape-legal
+     execution, defined as φH, φT, φrT, δH, δT, φn, φac, δe, δen, and δbn (and
+     to my surprise, not φTn).  In our setting some of these are oblivated:
+     - φH: the head is non-null by construction & the form of the hindsight axiom
+     - δH: the head is fixed, again by construction and the axiom design
+     There are also several that appear unused in the actual hindsight proof:
+     - φT, φrT, and δT seem unused because the tail is never considered in
+       the proof!
+     This leaves:
+     - φn : non-tail nodes have next pointers
+     - φac : the "heap" (really paths through this field) are acyclic
+     - δe: exterior nodes never become backbone nodes
+     - δen: The successor of an exterior node is fixed
+     - δbn: If the successor of a backbone changes, it is still a backbone in the new state.
+     where a backbone node is defined as one reachable from the head by following
+     the field of interest.
+
+     Really, requiring a path from head to null by following the single field implies
+     φn and φac.
+: *)
+  always_reach_null : forall (r:ref{A|P}[R,R]) h, 
+                      exists f', FieldReach A f h r f' /\ getF(h[f'])=None;
+  (* TODO: Need to figure out how to represent exteriorness.  One approach is
+     saying it was reachable in h and unreachable in h', R h h'.  But there's
+     no good choice for that R... *)
+  (* If a node is exterior, it never becomes a backbone again *)
+  δe : False;
+  (* If a node is exterior, its next field never changes again *)
+  δen : False;
+  (* If the next field of a backbone node changes, it must remain a backbone *)
+  δbn : forall (r t:ref{A|P}[R,R]) x x' h h',
+          h[t]=x -> h' = heap_write t x' h ->
+          (exists v, v ≠ getF x /\ x' = setF x v) ->
+          FieldReach A f h r t -> R x x' h h' ->
+          FieldReach A f h' r t
+}.
+Require Import MichaelScottQ.
+(* Need to figure out how to state the following as a general principle: *)
+Lemma backbone_pres : forall x y z h h', 
+                        FieldReach Node next h x z -> (* z is backbone *)
+                        FieldReach Node next h x y -> (* y is backbone *)
+                        deltaNode (h[y]) (h'[y]) h h' -> (* heap changes at y *)
+                        FieldReach Node next h' x z (* z still backbone *).
+Proof.
+  intros.
+  induction H; try constructor.
+  eapply step_hsr; eauto.
+  destruct delta_eq. specialize (H3 _ _ _ _ H1). clear H1 H4.
+  assert (stable (λ x h, getF x = Some z) deltaNode').
+      red. intros. induction H4; eauto. compute in H1; rewrite compute_node_rect in H1; inversion H1.
+  Axiom always : forall T P P' R (r:ref{T|P}[R,R]), stable P' R ->
+                                  forall h h', P' (h[r]) h -> P' (h'[r]) h'.
+  eapply always with (P' := (λ x h, getF x = Some z))(h:=h); eauto.
+  repeat intro; red in H1. eapply H1; eauto. destruct delta_eq. apply H6. eassumption.
+Qed.
+                                         
+
+Instance hsf_Node : HindsightField Node :=
+{ f := next
+}.
+  (* always_reach_null *)
+  intros.
+  assert (H := heap_lookup2 h r). 
+  Require Import Coq.Program.Equality.
+  remember (h[r]) as x.
+  destruct (validity x h). specialize (H0 H). clear H H1. 
+  assert (H : getF x = getF (h[r])). subst. eauto. clear Heqx.
+  generalize dependent r.
+  induction H0; intros.
+      exists r. split. constructor. rewrite <- H; compute; rewrite compute_node_rect. reflexivity.
+      specialize (IHvalidNode' tl eq_refl).
+      destruct IHvalidNode' as [f' [reach no]].
+      exists f'. split; eauto.
+          eapply step_hsr'. eassumption. rewrite <- H.
+          solve[compute; rewrite compute_node_rect; eauto].
+  (* δe, δen *) admit. admit.
+  (* δbn *)
+  intros. destruct H1 as [v [Hne He]].
+  destruct delta_eq.
+  assert (H':=H1 _ _ _ _ H3). clear H3 H1 H4.
+      induction H2; try constructor.
+      clear IHFieldReach.
+      dependent induction H'.
+      (* Two refl cases form contradictions *)
+      (* contradiction *) exfalso. apply Hne; compute; rewrite compute_node_rect.
+          compute in He; rewrite compute_node_rect in He. 
+          assert (H' := node_inj _ _ _ _ He). destruct H'; congruence.
+      (* contradiction *)
+          exfalso. apply Hne. compute in *; rewrite compute_node_rect in *.
+          assert (H'' := node_inj _ _ _ _ He). destruct H''; congruence.
+      (* Intuitively, a stable property becomes a □ (always) property,
+         and reachability from a node via next is actually stable!
+         Technically this is a little subtle, because we're not working
+         in a logic that exposes ordering among worlds, so there's a danger
+         of misapplying this principle to go backwards in time, before
+         the property held... *)
+      assert (FieldReach Node next h x0 z). eapply step_hsr; eauto.
+      eapply backbone_pres; eauto.
+      rewrite H0. 
+      (** TODO: This should be in Core! *)
+      Axiom read_heap_update : forall T P R G (r:ref{T|P}[R,G]) h v,
+                                 (heap_write r v h)[r] = v.
+      rewrite read_heap_update.
+      rewrite H.
+      destruct delta_eq. apply H6. eapply node_append.
+      rewrite H0 in H3. eassumption.
+Qed.
+          
+
+
+Inductive temporal_backbone {T P R G}{F:Set}`{hsf:HindsightField (F:=F) T}`{FieldType T F f (option (ref{T|P}[R,G]))}
                             : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Set :=
   | init_backbone : forall a, temporal_backbone a a
   | next_backbone : forall a b c, temporal_backbone a b ->
-                                  (* getF (h[b]) = c -> Don't think we need this since we really care about the interp... *)
                                   temporal_backbone a c
   | prfx_backbone : forall a b c, temporal_backbone b c -> temporal_backbone a c
 .
+(** TODO: interference! *)
 Fixpoint interp_temporal_backbone {A:Set}
-                                  {T P R G}{F:Set}`{HindsightField (F:=F) T }`{FieldType T F f (ref{T|P}[R,G])}
+                                  {T P R G}{F:Set}`{HindsightField (F:=F) T }`{FieldType T F f (option (ref{T|P}[R,G]))}
                                   {a b:ref{T|P}[R,G]} (bb:temporal_backbone a b) : @trace A :=
   match bb with
   | init_backbone a => ε
-                         (* TODO: interference! *)
-  | next_backbone a b c bb_ab => (interp_temporal_backbone bb_ab) ~~> (local (λ h h', h=h' /\ getF (h[b]) = c))
-  | prfx_backbone a b c bb_bc => (local (λ h h', h=h' /\ getF (h[a]) = b))~~>(interp_temporal_backbone bb_bc)
+  | next_backbone a b c bb_ab => (interp_temporal_backbone bb_ab) ~~> (local (λ h h', h=h' /\ getF (h[b]) = Some c))
+  | prfx_backbone a b c bb_bc => (local (λ h h', h=h' /\ getF (h[a]) = Some b))~~>(interp_temporal_backbone bb_bc)
   end.
 Notation "[| bb |]" := (interp_temporal_backbone bb) (at level 45).
 Notation "% a" := (init_backbone a) (at level 30).
 Notation "ab ↝ c" := (next_backbone _ _ c ab) (at level 36, left associativity).
-
-Variable r : ref{nat|any}[havoc,havoc].
-Variable x : ref{nat|any}[havoc,havoc].
-Variable y : ref{nat|any}[havoc,havoc].
-Check (%r ↝ x ↝ y).
-Eval compute in [| %r ↝ x ↝ y |].
-
 
 (* Then the Hindsight lemma should be along the lines of:
 Axiom hindsight : forall ....,
@@ -408,12 +689,16 @@ type and this proof should be bundled up in the HindsightField instance...
 AND I need to ensure that this axiom actually reflects the results of the HS lemma.  If I need to generalize
 it slightly, that seems fine, but I need to ensure this is sound!
 *)
-Check @temporal_backbone.
+Check @FieldReach.
+Check @HindsightField.
+Definition HindsightReach T {ir P R G F} f {H0 FT}`{HindsightField (F:=F) T} h src dst :=
+  @FieldReach T ir P R G F f H0 FT h src dst.
 Axiom hindsight_maybe : forall A T P R G (F:Set),
                         forall (ir:ImmediateReachability T) (ft:FieldTyping T F) 
-                               (hsf:@HindsightField T F ir ft) (ftt:FieldType T F f (ref{T|P}[R,G])),
+                               (hsf:@HindsightField T F ir ft)
+                               (ftt:FieldType T F f (option (ref{T|P}[R,G]))),
                         forall (src dst:ref{T|P}[R,G]) (bb:@temporal_backbone T P R G F ir ft hsf ft ftt src dst) G_act,
-    [| bb |]~~>(local (G_act@dst)) ≪ (local (A:=A) ((λ (x x':T) h h', HindsightReach T h src dst /\ G_act (h[dst]) (h'[dst]) h h')@src))
+    [| bb |]~~>(local (G_act@dst)) ≪ (local (A:=A) ((λ (x x':T) h h', HindsightReach T f h src dst /\ G_act (h[dst]) (h'[dst]) h h')@src))
 .
 Check hindsight_maybe.
 
@@ -439,7 +724,7 @@ Section HindsightTesting.
     .
   Next Obligation. eapply pred_and_proj1. eassumption. Defined.
     
-  Instance e_hind : HindsightField E := { f := nxt }.
+  Instance e_hind : HindsightField E := { f := nxt }. admit. admit. admit. admit. Qed.
   (** TODO: not ideal; the hindsight proof approach is bleeding into the spec.  Maybe we need a
       more general FieldReachable .... f to do this. *) 
   Check @HindsightReach.
@@ -454,7 +739,7 @@ Section HindsightTesting.
                                     (** TODO: This is actually broken; the Hindsight machinery assumes the
                                         type of the HSF is the ref type, but here it's an option of the
                                         ref type... *)
-                                    @HindsightReach E _ _ _ F _ hs_node_fields e_hind hs_node_fields _ h (@convert_P _ _ invE _ _ _ _ _ _ head) p /\
+                                    @HindsightReach E _ _ _ _ F _ hs_node_fields _ _ _ e_hind h (@convert_P _ _ invE _ _ _ _ _ _ head) p /\
                                     getF (h[p]) = Some c /\
                                     getF (h[p]) ≪≪ k = true /\
                                     getF (h[c]) ≪≪ k = false
@@ -462,7 +747,6 @@ Section HindsightTesting.
                            (result (p,c))
                          end))
   . (* TODO: more interference... *)
-  Next Obligation. (** TODO: FieldType, need to adjust for fns of field type *) admit. Qed.
   Next Obligation. eapply pred_and_proj1; eassumption. Qed.
   Next Obligation. eapply pred_and_proj1; eassumption. Qed.
 
@@ -481,8 +765,9 @@ Section HindsightTesting.
                           locate_inner_loop_count n' c nxt k))
          | O =>    ( (local ((λ x x' h h', x=x'/\h=h'/\ ((getF x) ≪≪ k)=false)@c))~~>(result (p,c)))
        end).
-    Lemma search_refine : forall n k (X:FieldType E F f eptr) (p c p' c':eptr),
-                          exists (bb:@temporal_backbone _ _ _ _ F _ _ e_hind hs_node_fields _ c c'),
+    Check @temporal_backbone.
+    Lemma search_refine : forall n k (X:FieldType E F f (option eptr)) (p c p' c':eptr),
+                          exists (bb:@temporal_backbone _ _ _ _ F _ hs_node_fields e_hind hs_node_fields _ c c'),
         (** TODO: locate_inner_loop already includes a result... And need to think through calls more... *)
         (locate_inner_loop_count n p c k)~~>(result (p',c')) ≪ [| bb |]~~>result (p',c').
     Proof.
@@ -559,7 +844,7 @@ Section HindsightTesting.
 
   
 
-  Lemma search_refine' : forall k (X:FieldType E F f eptr) (p c p' c':eptr),
+  Lemma search_refine' : forall k (X:FieldType E F f (option eptr)) (p c p' c':eptr),
                         exists (bb:@temporal_backbone _ _ _ _ F _ _ e_hind hs_node_fields _ c c'),
       (** TODO: locate_inner_loop already includes a result... And need to think through calls more... *)
       (locate_inner_loop p c k)~~>(result (p',c')) ≪ [| bb |]~~>result (p',c').
