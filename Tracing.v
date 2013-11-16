@@ -31,6 +31,7 @@ Notation "'ε'" := (epsilon) (at level 0).
 Definition remote {A:Set} (R:relation heap) : @trace A := obs (act_remote R).
 Definition local {A:Set} (R:relation heap) : @trace A := obs (act_local R).
 Notation "(ζ x => e )" := (bind (fun x => e)).
+Notation "(ζ' x : t => e )" := (bind (fun (x : t) => e)).
 
 (* Better have infinite refinement proofs if we have infinite traces... *)
 CoInductive refines {A:Set} : relation (@trace A) :=
@@ -65,6 +66,7 @@ CoInductive refines {A:Set} : relation (@trace A) :=
   | refine_bind_l : forall (T:Set) (f:T->trace) Q, (exists t, refines (f t) Q) -> refines (bind f) Q
   | refine_bind_r : forall (T:Set) (f:T->trace) Q, (exists t, refines Q (f t)) -> refines Q (bind f)
   | refine_bind_b : forall (T:Set) (f g:T->trace), (exists t, refines (f t) (g t)) -> refines (bind f) (bind g)
+  | refine_under_binder : forall (T:Set) (f g:T->trace), (forall t, refines (f t) (g t)) -> refines (bind f) (bind g)
                                                                                        | refine_equiv_l : forall X Y Z, trace_equiv X Y -> refines Y Z -> refines X Z
                                                                                        | refine_equiv_r : forall X Y Z, trace_equiv Y Z -> refines X Y -> refines X Z
                                                                                        | refine_drop_passive_l : forall (R:relation heap) X, (forall h h', R h h' -> h=h') -> refines ((local R)~~>X) X
@@ -689,9 +691,7 @@ Instance hsf_Node : HindsightField Node :=
       rewrite H.
       destruct delta_eq. apply H6. eapply node_append.
       rewrite H0 in H3. eassumption.
-Qed.
-          
-
+Defined.
 
 Inductive temporal_backbone {T P R G}{F:Set}`{hsf:HindsightField (F:=F) T}`{FieldType T F f (option (ref{T|P}[R,G]))}
                             : ref{T|P}[R,G] -> ref{T|P}[R,G] -> Set :=
@@ -719,7 +719,7 @@ Axiom hindsight : forall ....,
 or
 Axiom hindsight : forall ....,
     [| %src↝...↝dst |]~~>(local (G_act@dst) ≪ (λ x x' h h', HindsightReach h x dst /\ G_act (h[dst]) (h'[dst]) h h')@src)
-Still need to deal with interference, and allocations that might happen between the backbone and action
+TODO: Still need to deal with interference, and allocations that might happen between the backbone and action
 Also need more constraints on R (and G?) to enforce the relevant hindsight constraints... maybe the exact ref
 type and this proof should be bundled up in the HindsightField instance...
 AND I need to ensure that this axiom actually reflects the results of the HS lemma.  If I need to generalize
@@ -737,6 +737,124 @@ Axiom hindsight_maybe : forall A T P R G (F:Set),
     [| bb |]~~>(local (G_act@dst)) ≪ (local (A:=A) ((λ (x x':T) h h', HindsightReach T f h src dst /\ G_act (h[dst]) (h'[dst]) h h')@src))
 .
 Check hindsight_maybe.
+
+Definition nq_op (q:msq) (n:nat) x x' (h h':heap) :=
+  exists n₀, x = mkNode n₀ None /\ 
+            exists tl, x' = mkNode n₀ (Some tl) /\ h'[tl]=mkNode n None.
+Print temporal_backbone.
+(* TODO: Again, we're missing interference in the middle of the HS lemma and trace *)
+Program Example enqueue_spec (q:msq) (n:nat) :=
+    (remote (clos_refl_trans _ (δmsq@q)))~~>
+    (ζ sentinel => (local (witness (λ x h, x=mkMSQ sentinel) q))~~>
+    (ζ tl =>
+    bind (fun bb : (temporal_backbone (H:=nd_reach)(hsf:=hsf_Node)(F:=NFields)(H2:=_) sentinel tl) =>
+            (local ((λ x x' h h', FieldReach _ next h sentinel tl /\
+                            nq_op q n x x' h h')@tl))~~>
+             result tt
+    )))~~>
+    (remote (clos_refl_trans _ (δmsq@q))).
+CoFixpoint find_tl (best_tl out:noderef) : @trace unit :=
+    (ζ Otl => (local (witness (λ x h, getF x = Otl) best_tl))~~>
+              match Otl with
+              | None => (local (witness (λ x h, getF x = None /\ best_tl = out) best_tl))
+              | Some new_best_tl => find_tl new_best_tl out
+              end).
+CoFixpoint enqueue_trace (q:msq) (n:nat) :=
+    (remote (clos_refl_trans _ (δmsq@q)))~~>
+    (ζ sentinel => (local (witness (λ x h, x=mkMSQ sentinel) q))~~>
+    (ζ tl => (find_tl sentinel tl)~~>
+             choice ((local eq)~~>enqueue_trace q n)
+                    ((local ((nq_op q n)@tl))~~>result tt)
+    )~~>
+    (remote (clos_refl_trans _ (δmsq@q)))).
+Lemma enque_sat_spec : forall q n, enqueue_trace q n ≪ enqueue_spec q n.
+Proof.
+  intros. cofix.
+  rewrite (trace_dup_eq _ (enqueue_trace _ _)).
+  rewrite (trace_dup_eq _ ).
+  compute[trace_dup enqueue_trace enqueue_spec].
+  fold enqueue_trace.
+  
+  (* Lift the choice operator to the top *)
+  eapply refine_trans. eapply refine_equiv_l. apply teq_lift_binder.
+  eapply refine_trans. apply refine_under_binder.
+  intro.
+  eapply refine_trans. apply refine_right. apply refine_right.
+  apply refine_left. apply refine_under_binder; intros.
+  eapply refine_equiv_l. apply teq_choice_inline1. apply refine_refl.
+  eapply refine_trans. apply refine_right. apply refine_reassoc.
+  apply refine_right. apply refine_left.
+  eapply refine_equiv_l. apply teq_lift_binder.
+  apply refine_under_binder. intro. eapply refine_equiv_l. apply teq_choice_inline1.
+  apply refine_refl.
+  apply refine_under_binder. intro.
+  eapply refine_right. eapply refine_equiv_l.  apply teq_append_binder.
+  apply refine_under_binder. intro.
+  eapply refine_equiv_l.  apply teq_choice_inline2.
+  apply refine_refl.
+  eapply refine_trans. apply refine_under_binder. intro.
+  eapply refine_equiv_l. apply teq_lift_binder.
+  apply refine_refl.
+  eapply @refine_hoist with (C:=λ t,t). intro sentinel.
+  eapply @refine_hoist with (C:=λ t,t). intro tl.
+  eapply refine_equiv_l.  apply teq_choice_inline1.
+
+  (* break out the choice *)
+  constructor.
+
+  (* retry case: duplicate outer interference on spec, fold spec, 
+     and reduce away all local actions since they're read-only *)
+  clear enque_sat_spec. admit.
+
+  (* success case: coinduct on the find_tl to build a temporal backbone,
+     then apply hindsight to yield the instantaneous field access trace. *)
+  (* Don't need the coIH here *) clear enque_sat_spec.
+  apply refine_right. apply refine_left.
+  apply refine_bind_r. exists sentinel.
+  apply refine_right.
+  apply refine_bind_r. exists tl.
+  eapply refine_equiv_r. apply teq_append_binder.
+  eapply refine_trans. apply refine_reassoc. apply refine_left.
+  
+
+  (* Also bad is that the original use for hoist was actually hoisting
+     a binder out over the existential quantification of the backbone!
+     Will need a new kind of refinement ctor for this probably... *)
+  
+  assert (∀ a, exists (bb : temporal_backbone a tl), find_tl a tl ≪ [| bb |]).
+      cofix.
+
+  cofix.
+  rewrite (trace_dup_eq _ (find_tl _ _)).
+  rewrite (trace_dup_eq _ ).
+  compute[trace_dup find_tl].
+  eapply refine_equiv_l. apply teq_sym. apply teq_shrink_binder.
+  fold find_tl.
+  eapply @refine_hoist with (C:=λ t,t).
+  intros.
+  induction q0.
+  
+  (* recursive case *)
+  clear enque_sat_spec.
+  (* TODO: This doesn't look right... coIH is for sentinel~>tl, but I need
+     a~>tl (though I do observe sentinel->a, so maybe I can reconstruct it...*)
+admit.
+
+  (* found the tail! *)
+  (* TODO: Need a way to lift □ (always) assumptions into context... 
+     need to use sentinel = tl to subst and instantiate the backbone...*)
+  apply refine_bind_r. exists 
+
+  
+
+
+
+  admit.
+Qed.
+ 
+    
+  
+
 
 
 Section HindsightTesting.
