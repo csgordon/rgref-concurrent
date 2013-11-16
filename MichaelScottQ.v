@@ -44,14 +44,14 @@ Axiom Node_heap_rect : forall h (P:Node->Type), (forall n, P (mkNode n None)) ->
 Require Import RGref.DSL.Fields.
 
 Inductive NFields : Set := val | next.
-Instance nfields : FieldTyping Node NFields.
-Instance nfield_val : FieldType Node NFields val nat := {
+Global Instance nfields : FieldTyping Node NFields.
+Global Instance nfield_val : FieldType Node NFields val nat := {
     (*getF := fun v => match v with (mkNode x tl) => x end;*)
     getF := Node_rec (fun x tl => x);
     (*setF := fun v fv => match v with (mkNode x tl) => mkNode fv tl end*)
     setF := fun n v => Node_rec (fun x tl => mkNode v tl) n
 }.
-Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[deltaNode,deltaNode])) := {
+Global Instance nfield_next : FieldType Node NFields next (option (ref{Node|validNode}[deltaNode,deltaNode])) := {
     getF := Node_rec (fun x tl => tl);
     setF := fun v fv => Node_rec (fun x tl => mkNode x fv) v
 }.
@@ -100,7 +100,7 @@ Inductive δmsq : hrel MSQ :=
 Definition msq := ref{MSQ|vMSQ}[δmsq,δmsq].
 Inductive q_reachability : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (q:MSQ), Prop :=
   | q_r : forall n, q_reachability n (mkMSQ n).
-Instance q_reach : ImmediateReachability MSQ :=
+Global Instance q_reach : ImmediateReachability MSQ :=
   { imm_reachable_from_in := @q_reachability }.
 
 Lemma MSQ_stability : stable vMSQ δmsq.
@@ -115,17 +115,17 @@ Inductive nd_contains : hrel Node -> Prop :=
                                               (mkNode n (Some tl))
                                               h h') ->
               nd_contains RR.
-Instance nd_containment : Containment Node := { contains := nd_contains }.
+Global Instance nd_containment : Containment Node := { contains := nd_contains }.
 Inductive msq_contains : hrel MSQ -> Prop :=
   | msq_cont : forall RR tl,
                 contains (fun c c' h h' => RR (mkMSQ tl) (mkMSQ tl) h h') ->
               msq_contains RR.
-Instance msq_containment : Containment MSQ := { contains := msq_contains }.
+Global Instance msq_containment : Containment MSQ := { contains := msq_contains }.
 
 (** Folding is identity for both, since all inner pointers are already at least
     as restrictive as outer pointers *)
-Instance nd_fold : readable_at Node deltaNode deltaNode := id_fold.
-Instance msq_fold : readable_at MSQ δmsq δmsq := id_fold.
+Global Instance nd_fold : readable_at Node deltaNode deltaNode := id_fold.
+Global Instance msq_fold : readable_at MSQ δmsq δmsq := id_fold.
 
 Lemma precise_valid_node : precise_pred validNode'.
   compute. intros; intuition; eauto. induction H; constructor.
