@@ -79,6 +79,18 @@ Notation "'observe-field' r --> f 'as' x , pf 'in' P ';' m" :=
 Notation "'observe-field-explicit' FT 'for' r --> f 'as' x , pf 'in' P ';' m" :=
   (@field_read_refine _ _ _ _ _ _ _ _ _ _ _ _ r f _ FT (fun x => P) _ _ (fun x pf => m))
     (at level 65).
+Axiom field_read_refineP : forall {Γ Γ' T P R G}{B X F F' : Set}`{readable_at T R G} (fld:res=B)
+                                 (r:ref{T|P}[R,G])(f:F)
+                                 `{FieldType B F f F'}
+                                 (P' : F' -> hpred T),
+                            (forall h b, b=h[r] -> P b h -> P' (getF (asB fld (dofold b))) b h) ->
+                            (forall t, stable (P' t) R) ->
+                            (forall t, (forall h, P' t (h[r]) h) ->
+                                       rgref Γ X Γ') ->
+                            rgref Γ X Γ'.
+Notation "'observe-field-explicitP' FT 'for' r --> f 'as' x , pf 'in' P ';' m" :=
+  (@field_read_refineP _ _ _ _ _ _ _ _ _ _ _ _ r f _ FT (fun x => P) _ _ (fun x pf => m))
+    (at level 65).
 
 
 Section FieldDemo.

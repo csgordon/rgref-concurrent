@@ -64,7 +64,23 @@ Inductive δ (n:nat) : hrel (uf n) :=
                             which means we're not introducing a cycle. It also implies the
                             increasing rank. *)
                          @eq nat (getF (h[x <| f |>])) (getF (h[c])) -> (* preserve rank *)
-                         chase n x h f (getF (h[c])) ->
+                         (* This old chase theory is too strong.  consider reading the grandparent for a CAS, then the parent is looked up and completely bumped (so the links now skip the was-grandparent).  Then the CAS on the original cell would succeed, but actually extend the path at the moment of the write (subsequently it would be compressed again by the parent-lookup process, but... *)
+                         (*chase n x h f (getF (h[c])) -> *)
+                         (* Instead, we need to
+                            1) prevent cycles (i.e. not h[c].parent-->f)
+                            2) at least perform an update within the same set (common ancestor for h[c].parent and f)
+                            Since not h[c].parent-->f, h[c].parent's path to the root is not affected by updating f,
+                            f's new path is f-->h[c].parent-->...->root, and anything reaching f is <whatever>-->f->...
+                            Thus terminating_ascent is preserved.
+                            We require (2) to ensure we don't spuriously munge sets...
+                         *)
+                         (exists Y, ~chase n x h (getF (h[c])) f /\
+                                     chase n x h (getF (h[c])) Y /\
+                                     chase n x h f Y
+                         ) ->
+    getF (h[c]) ≤ getF (h[x<|(getF (h[c]))|>]) ->
+    (@eq nat (getF (h[c])) (getF (h[x<|(getF (h[c]))|>])) ->
+         proj1_sig (to_nat f) < proj1_sig (to_nat (getF (h[c])))) ->
                          δ n x (array_write x f c) h h'
   (** Union sets the parent and rank of a self-parent *)
   | path_union : forall A x xr c h h' y xr' yr,
@@ -176,6 +192,11 @@ Proof.
   induction (H i); arrays h h'.
       apply self_ascent; eauto.
       eapply trans_ascent; eauto.
+Qed.
+Lemma ascend_new_heap' : forall n x h h' i, terminating_ascent n x h i ->
+                                         terminating_ascent n x h' i.
+Proof.
+  intros. induction H; arrays h h'. apply self_ascent; eauto. eapply trans_ascent; eauto.
 Qed.
 Lemma chase_new_heap : forall n x h h' i j, chase n x h i j -> chase n x h' i j.
 Proof.
@@ -401,6 +422,77 @@ Qed.
    chase_dec, then in the affected cases, inducting on whether or not the affected index is the updated cell or not, then applying one of the previous 3 lemmas.
 *)
 
+Lemma sameset_acyclic_update_preserves_term_ascent :
+  forall h h' n x f c newparent i,
+    @eq nat (getF (h[x <| f |>])) (getF (h[c])) ->
+    (forall i, terminating_ascent n x h i) ->
+    getF (h[c]) = newparent ->
+    (exists Y, ~chase n x h (getF (h[c])) f /\
+                chase n x h (getF (h[c])) Y /\
+                chase n x h f Y) ->
+    getF (h[c]) ≤ getF (h[x<|newparent|>]) ->
+    (@eq nat (getF (h[c])) (getF (h[x<|newparent|>])) ->
+         proj1_sig (to_nat f) < proj1_sig (to_nat newparent)) ->
+    terminating_ascent n (array_write x f c) h' i.
+Proof.
+  intros h h' n x f c newparent i Hrank H.
+  intros Hparent.
+  intros [Y [Hnocycle [HcY HfY]]].
+  intros Hparent_rank Hparent_sort.
+  fold fin in *. (* some of the lemmas are stated w.r.t. Fin.t... *)
+  
+  Check chase_dec.
+
+  induction (fin_dec _ i f).
+  + subst f. rewrite Hparent in *.
+    assert (newparent <> i). eapply no_chase_irrefl; eauto. auto.
+    eapply trans_ascent with (t:=newparent).
+    rewrite read_updated_cell. arrays h h'. auto.
+    rewrite read_updated_cell.
+    rewrite read_past_updated_cell; auto. arrays h h'; auto.
+    rewrite read_updated_cell. rewrite read_past_updated_cell; try solve[auto].
+    arrays h h'. intro Heq. specialize (Hparent_sort Heq).
+    auto.
+    eapply unaffected_update. constructor. intros. eapply ascend_new_heap'. eauto. arrays h h'. assumption.
+    intro Hbad. assert (chase n x h newparent i).
+    eapply chase_new_heap. eassumption. auto.
+  + 
+  induction (chase_dec n x h i f); try solve[constructor; eauto]; eauto.
+  - apply (affected_update n x h' f c); eauto.
+        constructor; eauto using ascend_new_heap.
+        arrays h h'; eassumption.
+        rewrite Hparent in *.
+        assert (newparent <> f). eapply no_chase_irrefl; eauto. auto.
+        eapply trans_ascent with (t:=newparent).
+        rewrite read_updated_cell. arrays h h'; auto.
+        rewrite read_updated_cell. rewrite read_past_updated_cell.
+        repeat rewrite (imm_vals' h h') in *. tauto.
+        solve[auto].
+        rewrite read_updated_cell. rewrite read_past_updated_cell; auto.
+        repeat rewrite (imm_vals' h h') in *.
+        intro Heq; specialize (Hparent_sort Heq). tauto.
+        (* newparent is "unaffected" *)
+        eapply unaffected_update.
+            constructor. eauto using ascend_new_heap.
+            arrays h h'; eassumption.
+            intro Hbad. apply Hnocycle.
+            eauto using chase_new_heap.
+            eauto using chase_new_heap.
+    - (* unaffected: i is "above" f or in another set *)
+    assert (sol := unaffected_update n x h f c (pfφ _ _ h H) Hrank i H0).
+    Check ascend_new_heap.
+    apply (ascend_new_heap' n _ h h'). eauto.
+Qed.    
+       (* Notes: Once an index is non-root, it remains non-root.
+                  Non-root ranks are fixed forever.
+                  --> If we observe a path x-->y for x<>y,
+                      then forever onwards, x.rank <= y.rank.
+                  In locations where we read out a parent link,
+                  we can generate this.  Then again for the grandparent, using transitivity of <=.
+         *)
+    
+    
+
 Lemma chase_update_preserves_term_ascent :
   forall h h' n x f i mid c,
     @eq nat (getF (h[x <| f |>])) (getF (h[c])) ->
@@ -535,7 +627,8 @@ Proof.
   induction H0.
   (* Compression *)
       destruct H. constructor. intros.
-      eapply chase_update_preserves_term_ascent; eauto.
+      (*eapply chase_update_preserves_term_ascent; eauto.*)
+      eapply sameset_acyclic_update_preserves_term_ascent; eauto.
   (* Union *)
       destruct H. constructor.
       
@@ -744,9 +837,13 @@ Lemma precise_δ : forall n, precise_rel (δ n).
     assert (Htmp := precise_φ n). red in Htmp.
     eapply path_compression; eauto.
     
-    Focus 2. eapply H'. rewrite immutable_vals with (h' := h). eassumption.
-    eauto.
-    repeat rewrite immutable_vals with (h:=h2) (h' := h). eassumption.
+    repeat rewrite immutable_vals with (h:=h2)(h':=h). assumption.
+    destruct H3 as [Y [Hno [HcY HfY]]].
+    exists Y. 
+        repeat rewrite immutable_vals with (h:=h2)(h':=h). 
+        intuition; eauto using chase_new_heap.
+    repeat rewrite immutable_vals with (h:=h2)(h':=h). assumption.
+    repeat rewrite immutable_vals with (h:=h2)(h':=h). assumption.
 
     rewrite H in H1. rewrite (immutable_vals _ _ h h2) in H2. rewrite H in H4.
     eapply path_union; eauto. 
@@ -762,21 +859,6 @@ Qed.
     
 Hint Resolve precise_φ precise_δ.
 
-(** TODO: δ seems to only be reflexive when applied to arrays satisfying
-    φ.  This is intuitively reasonable; if reads of a ref{T|P}[R,G] occur
-    where P "implies" G reflexive, then it's fine, as with any P' where
-    P' => P.  Maybe readable_at should take a P predicate as well,
-    any maybe the reflexivity requirements should be moved to
-    readable_at.  Then,
-        Class ConditionallyReflexive {T:Set}(P:hpred T)(G:hrel T) :=
-        { irefl : forall t h, P t h -> G t t h h }.
-        Class Reflexive {T:Set}(G:hrel T) := { r : hreflexive G }.
-        Instance RIR {T}{P}`{Reflexive G} : ConditionallyReflexive P G :=
-        { irefl := fun t h Pth => r t h }.
-        Class readable_at T P R G `{ConditionallyReflexive P G} := <as before>
-    And then we'd pretty much require a readable_at wherever a proof
-    of hreflexive was required before (pretty much already true).
-*)
 Lemma refl_δ : forall n, hreflexive (δ (S n)).
 Proof.
   intros; red; intros. constructor.
@@ -934,183 +1016,391 @@ Next Obligation.
 
 Qed. (* UpdateRoot guarantee (δ n) *)
 
+(** Coq is bad at automatically unfolding uf to an Array, so we give it a hint *)
+Global Instance uf_fields {n:nat} : FieldTyping (uf n) (fin _) := array_fields.
+Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _) f (ref{_|_}[_,_]) :=
+  array_field_index.
+Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[local_imm,local_imm]).
+  unfold uf. intros. apply @array_field_index.
+Defined.
+
+Definition sameset_chasing {n:nat} i j : hpred (uf n) :=
+  λ x h, 
+    exists Y,
+       chase n x h i Y /\
+       chase n x h j Y.
+Lemma sameset_chasing_stable :
+  forall n i j, stable (@sameset_chasing n i j) (δ n).
+Proof.
+  intros. red. intros. unfold sameset_chasing in *.
+  destruct H as [Y [HiY HjY]].
+  induction H0.
+  + (* compression *)
+    (* If Y-->f (Y below f) or i and j both above f, then unaffected.
+          if f is on the path from i or j to Y, then ex Y' that the new stuff points to, and Y-->Y'.
+   *) 
+ admit.
+  + (* union *) 
+    exists Y.
+    assert (forall q, q<>x ->
+              getF (h[A<|q|>]) = getF (h[(array_write A x c)<|q|>])).
+        intros q Hne. 
+        rewrite read_past_updated_cell; eauto.
+    induction (fin_dec _ i x).
+    subst i. 
+    (* TODO: stable, but tricky: (not i-->j) and j-->i is crucial, since it shows they were originally in the same set, so the negative conjunct doesn't fail due to merging sets *) admit.
+    admit.
+
+  + (* bump rank *) 
+    exists Y.
+    assert (forall q, 
+              getF (h[A<|q|>]) = getF (h[(array_write A x c)<|q|>])).
+        intros q. induction (fin_dec _ x q).
+        subst q. rewrite read_updated_cell. rewrite H1. rewrite H. reflexivity.
+        rewrite read_past_updated_cell; eauto.
+    assert (forall n (A:uf n) h x c i j,
+                (forall q, getF (h[A<|q|>]) = getF (h[(array_write A x c)<|q|>])) ->
+                (chase n A h i j <->
+                          chase n (array_write A x c) h i j)).
+        intros. split; intros.
+        induction H4. constructor.
+                eapply trans_chase; eauto.
+                rewrite <- H3. assumption.
+        induction H4. constructor.
+                eapply trans_chase; eauto.
+                rewrite H3. assumption.
+    repeat rewrite <- H3.
+    intuition; eauto using chase_new_heap.
+    intros; arrays h' h; eauto.
+    intros; arrays h' h; eauto.
+  + (* id *) exists Y; intuition; eauto using chase_new_heap.
+Qed.
+Definition nonroot_rank {n:nat} i (rnk:nat) : hpred (uf n) :=
+  λ x h, getF (h[x<|i|>]) <> i /\ getF (h[x<|i|>]) = rnk.
+Lemma nonroot_rank_stable : forall n i rnk, stable (nonroot_rank i rnk) (δ n).
+Proof.
+  intros. red. intros. 
+  destruct H.
+  induction H0.
+  + induction (fin_dec _ f i). red. subst f.
+    rewrite read_updated_cell. arrays h h'.
+    rewrite <- H2. split; try solve[eauto].
+    destruct H3 as [Y [Hno _]]. intro Hbad.
+    fold fin in *. rewrite Hbad in Hno.
+    apply Hno. constructor.
+    red. rewrite read_past_updated_cell. arrays h h'.
+    split; eauto. eauto.
+  + induction (fin_dec _ x i). subst x. rewrite H0 in H.
+    exfalso. apply H. reflexivity.
+    red. rewrite read_past_updated_cell; eauto. 
+    arrays h h'. split; eauto.
+  + induction (fin_dec _ x i). subst x. rewrite H0 in H.
+    exfalso. apply H; eauto.
+    split; rewrite read_past_updated_cell; arrays h h'; eauto.
+  + split; arrays h h'; eauto.
+Qed.
+Hint Resolve nonroot_rank_stable.
+
+
 (** *** Find operation *)
 Program Definition Find {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (f:Fin.t (S n)) : rgref Γ (Fin.t (S n)) Γ :=
   RGFix _ _ (fun find_rec f =>
-               let c : (ref{cell _|any}[local_imm,local_imm]) := (r ~> f) in
-               let p := c ~> parent in
-               if (fin_beq p f)
-               then rgret f
-               else (
-                   c' <- Alloc! (mkCell _ (let _ := @cell_rank (S n) in c ~> rank) 
-                                         ((@field_read _ _ _ _ _ _ _ _ (uf_folding (S n)) _ r p _ _) ~> parent ) ) ;
+               (*let c : (ref{cell _|any}[local_imm,local_imm]) := (r ~> f) in*)
+               observe-field-explicitP (uf_fielding _ _) for r --> f as c, pfc 
+                 in (λ x h, sameset_chasing f (getF (h[c])) x h)  (* CAS gives back information *)
+                  ⊓ (λ x h, getF(h[c]) ≤ getF(h[x<|(getF(h[c]))|>]))
+                  ;
+               (*let p := c ~> parent in*)
+               observe-field-explicit cell_parent for c --> parent as p, pfp
+                 in (λ x h, getF x = p);
+               match (fin_beq p f) with
+               (*if (fin_beq p f)*)
+               (*then*) | true => rgret f
+               (*else*) | false => (
+                   observe-field-explicit (@cell_rank (S n)) for c --> rank as rnk, pfrnk
+                     in (λ x h, getF x = rnk);
+                   (* Sequentially: r[f].parent *)
+                   observe-field-explicitP (uf_fielding _ _) for r --> p as p_ptr, pf_p_ptr
+                     in (λ x h, sameset_chasing p 
+                                                (getF (h[p_ptr]))
+                                                x h)
+                      (* rank(p) ≤ rank(p.parent) *)
+                      ⊓ (λ x h, getF(h[p_ptr]) ≤ getF(h[x<|(getF(h[p_ptr]))|>]))
+                      ⊓ (λ x h, getF(h[c]) ≤ getF(h[p_ptr]))
+                      ⊓ (λ x h, getF(h[p_ptr]) <> p -> nonroot_rank p (getF(h[p_ptr])) x h)
+                      (*⊓ (λ x h, getF(h[p_ptr]) <> p ->
+                                @eq nat
+                                    (getF(h[p_ptr]))
+                                    (getF(h[x<|(getF(h[p_ptr]))|>])) ->
+                                proj1_sig (to_nat p) < proj1_sig (to_nat (getF)) *)
+                      (*⊓ (λ x h, @eq nat (getF(h[p_ptr])) (getF(h[x<|(getF(h[p_ptr]))|>])) ->
+                                getF(h[p_ptr]) = p \/
+                                proj1_sig (to_nat p) < proj1_sig (to_nat (getF(h[x<|p|>]))) 
+                                (*proj1_sig (to_nat p) < proj1_sig (to_nat (getF(h[p_ptr]))) *)
+                                
+                        )*); (* CAS gives back information *)
+                   (* Sequentially: r[r[f].parent].parent *)
+                   observe-field-explicit cell_parent for p_ptr --> parent as gparent, pfgp
+                                                                                         in (λ x h, getF x = gparent); 
+                   c' <- Alloc! (mkCell _ rnk gparent ) ;
                    (*_ <- fCAS( r → f, c, convert_P _ _ _ c');*)
                    _ <- @field_cas_core _ _ _ _ _ _ _ _ r f _ _ c (convert_P _ _ _ c') _;
                    find_rec p
-               )
+               ) end
             ) f
   .
+Next Obligation.
+  split.
+ red. exists (getF (h[h[r]<|f0|>])).
+                 split. eapply trans_chase. constructor. auto.
+                        constructor. 
+                        
+
+  destruct H0. 
+  eapply chase_rank. assumption. eapply trans_chase. constructor. reflexivity.
+                        
+Qed.
+Lemma rank_lb_stable : forall n r i, 
+                         stable (λ x h, r ≤ getF (h[x<|i|>]))
+                                (δ n).
+Proof.
+  intros. red. intros.
+  induction H0.
+  + induction (fin_dec _ f i). 
+      subst f. rewrite read_updated_cell. arrays h h'. rewrite <- H1. assumption.
+      rewrite read_past_updated_cell; auto. arrays h h'. auto.
+  + induction (fin_dec _ x i).
+      subst x. rewrite read_updated_cell. arrays h h'. rewrite H1.
+        rewrite H0 in H. simpl in H. simpl. eauto with arith.
+      rewrite read_past_updated_cell; auto. arrays h h'. auto. 
+  + induction (fin_dec _ x i).
+      subst x. rewrite read_updated_cell. arrays h h'. rewrite H2.
+        rewrite H0 in H. eauto with arith.
+      rewrite read_past_updated_cell; auto. arrays h h'. auto.
+  + arrays h h'. assumption.
+Qed.
+
+
+Next Obligation. 
+  apply pred_and_stable.
+red. intros. 
+                 assert (Htmp := sameset_chasing_stable _ f0 (getF (h[t])) x x' h h').
+                 arrays h h'. apply Htmp; eauto. 
+
+  red. intros. arrays h h'.
+  assert (Htmp := rank_lb_stable _ (getF (h'[t])) (getF (h'[t])) x x' h h').
+  simpl in Htmp. apply Htmp. arrays h h'. auto. auto.
+Qed.
+Next Obligation. compute; intros; subst; eauto. Defined.
+Next Obligation. compute; intros; subst; eauto. Defined.
+ 
+Next Obligation. 
+  split. 
+  split.
+  split.
+  red. exists (getF (h[h[r]<|p|>])). split. eapply trans_chase. constructor. auto. constructor. 
+  eapply chase_rank. destruct H0. assumption. eapply trans_chase. constructor. reflexivity.
+  destruct (pfc h). rewrite pfp in H1. assumption.
+
+  intros. red. split. assumption. reflexivity.
+
+  (*intro. induction (fin_dec _ (getF (h[x<|p|>])) p). left; auto.
+      right. eapply chase_rank_strict; eauto.
+      eapply trans_chase; eauto. constructor.*)
+Qed.
+
+Next Obligation. 
+  apply pred_and_stable. 
+  apply pred_and_stable. 
+  apply pred_and_stable.
+
+  red. intros. 
+                 assert (Htmp := sameset_chasing_stable _ p (getF (h[t])) x x' h h').
+                 arrays h h'. apply Htmp; eauto. 
+
+  red. intros. arrays h h'.
+  assert (Htmp := rank_lb_stable _ (getF (h'[t])) (getF (h'[t])) x x' h h').
+  simpl in Htmp. apply Htmp. arrays h h'. auto. auto.
+  
+  red. intros. arrays h h'. assumption.
+
+  intros x x' h h'.
+  intros. eapply nonroot_rank_stable; eauto. arrays h h'. apply H. assumption.
+
+  (*red. intros. arrays h h'. induction (fin_dec _ (getF (h'[t])) p).
+  left; auto.
+  right.
+  eapply chase_rank_strict; eauto.*)
+Qed.
+
+Next Obligation. compute; intros; subst; eauto. Defined.
 Next Obligation. exact any. Defined.
-Next Obligation. unfold Find_obligation_5. eauto. Qed.
+Next Obligation. unfold Find_obligation_16. eauto. Qed.
 Next Obligation. intuition. Qed.
-Next Obligation. unfold Find_obligation_5. eauto. Qed.
+Next Obligation. unfold Find_obligation_16. eauto. Qed.
 
 Lemma cellres : forall n, @res (cell n) local_imm local_imm _ = cell n.
 intros. simpl. reflexivity.
 Defined.
-      
-Next Obligation. (* δ *)
-  unfold Find_obligation_5 in *.
-  assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
 
-  eapply path_compression. eauto. (* stray dead rt arg *)
-  assumption.
-  rewrite conversion_P_refeq.
-  assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
-  simpl @getF at 2.
+Lemma chase_two_ordering : forall n x h a b c, chase n x h a b ->
+                            chase n x h a c ->
+                            chase n x h b c \/ chase n x h c b.
+Proof.
+  intros.
 
-      unfold Find_obligation_8 in *. unfold Find_obligation_9 in *.
-      unfold Find_obligation_10 in *. unfold Find_obligation_3 in *.
-      unfold Find_obligation_4 in *. unfold Find_obligation_1 in *.
-      unfold Find_obligation_2 in *.
-      
-  rewrite <- H0.
-  erewrite <- field_projection_commutes' with (h := h) (f := rank); auto.
-
-  assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. 
-  rewrite conversion_P_refeq.
-  rewrite H2; eauto. simpl @getF.
-
-(*  inversion H1.
-      subst f0.*)
-(*
-      assert (
-                @field_read _ _ _ _ _ _ _ _ (cellres _) (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r f0 _ (@array_field_index _ _ f0))
-               parent _ (@cell_parent _) = f0).
-          intros. rewrite <- field_projection_commutes' with (h := h) (f := parent).
-                  rewrite <- field_projection_commutes' with (h := h) (f := f0).
-                  apply H4.
-                  simpl. auto.
-                  auto.
-      unfold cellres in *. unfold uf_folding in *.
-      rewrite H5. rewrite H5. apply self_root. assumption.
-
-      subst r0.
-      assert (
-                @field_read _ _ _ _ _ _ _ _ ((cellres _)) (@local_imm_refl _) 
-                 (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r f0 _ (@array_field_index _ _ f0))
-               parent _ (@cell_parent _) = t).
-          intros. rewrite <- field_projection_commutes' with (h:=h) (f:=parent).
-          rewrite <- H5. f_equal. f_equal. symmetry. assumption.
-          simpl. reflexivity.
-      unfold cellres in *. unfold uf_folding in *.
-
-      rewrite H6. 
-
-      inversion H4.
-          subst t.
-          assert (
-                    @field_read _ _ _ _ _ _ _ _ ((cellres _)) (@local_imm_refl _) 
-                     (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r x _ (@array_field_index _ _ x))
-                   parent _ (@cell_parent _) = x).
-              rewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
-              rewrite <- field_projection_commutes' with (h:=h); eauto.
-      unfold cellres in *. unfold uf_folding in *.
-          rewrite H5. constructor. assumption.
-          subst r0.
-          assert (
-                    @field_read _ _ _ _ _ _ _ _ ((cellres _)) (@local_imm_refl _) 
-                     (@field_read _ _ _ _ _ _ _ _ (uf_folding _) (refl_δ _) r t _ (@array_field_index _ _ t))
-                   parent _ (@cell_parent _) = t0).
-          intros. rewrite <- field_projection_commutes' with (h:=h) (f:=parent); eauto.
-          rewrite <- H8. f_equal. f_equal. 
-          rewrite <- field_projection_commutes' with (h:=h).
-          simpl. reflexivity. simpl. reflexivity.
-              
-      unfold cellres in *. unfold uf_folding in *.
-          rewrite H9. assumption.
-          
-
-    rewrite conversion_P_refeq.
-    destruct (heap_lookup2 h c').
-    rewrite H3; try firstorder. simpl.
-      *)
-      unfold Find_obligation_8 in *. unfold Find_obligation_9 in *.
-      unfold Find_obligation_10 in *. unfold Find_obligation_3 in *.
-      unfold Find_obligation_4 in *. unfold Find_obligation_1 in *.
-      unfold Find_obligation_2 in *.
-    Check trans_chase.
-    Unset Printing Notations. idtac.
-    Set Printing Implicit. idtac.
-    eapply (trans_chase _ (h[r]) h f0 
-(@field_read (cell _) (cell _) F 
-                        (t _) (@any (cell _)) (@local_imm (cell _))
-                        (@local_imm (cell _)) (weak_read (cell _))
-                        (@eq_refl Set (cell _)) (local_imm_refl (cell _))
-                        (@field_read (uf _)
-                           (Array _
-                              (ref (cell _) (@any (cell _))
-                                 (@local_imm (cell _)) 
-                                 (@local_imm (cell _)))) 
-                           (t _)
-                           (ref (cell _) (@any (cell _))
-                              (@local_imm (cell _)) 
-                              (@local_imm (cell _))) 
-                           (φ _) (δ _) (δ _) (@read_uf _)
-                           (@eq_refl Set
-                              (Array _
-                                 (ref (cell _) (@any (cell _))
-                                    (@local_imm (cell _))
-                                    (@local_imm (cell _))))) 
-                           (refl_δ _) r f0
-                           (@array_fields _
-                              (ref (cell _) (@any (cell _))
-                                 (@local_imm (cell _)) 
-                                 (@local_imm (cell _))))
-                           (@array_field_index _
-                              (ref (cell _) (@any (cell _))
-                                 (@local_imm (cell _)) 
-                                 (@local_imm (cell _))) f0)) parent
-                        (@fielding _) (@cell_parent _))). 
-    Unset Printing Implicit. idtac.
-
-    Check @getF.
-    Check @field_read.
-    Print field_read.
-    assert (Hparenting :
-              (*eq (getF (heap_deref h (array_read (heap_deref h r) f0)))*)
-              eq (@getF _ _ _ parent _ cell_parent (heap_deref h (array_read (heap_deref h r) f0)))
-                 (@field_read _ _ _ _ any local_imm local_imm _ eq_refl (local_imm_refl _) 
-                              (field_read (H0:=eq_refl)(hreflexive0:=refl_δ _) r f0) parent _ _)).
-    rewrite H0. erewrite field_projection_commutes' with (h:=h). reflexivity.
-    simpl; eauto.
-    
-    erewrite <- field_projection_commutes' with (h:=h)(f:=parent); eauto.
-
-    Focus 2.
-    rewrite H0. erewrite field_projection_commutes' with (h:=h). reflexivity.
-    simpl; eauto.
-    Set Printing Notations. idtac.
-    
-    rewrite H0 in Hparenting.
-    repeat rewrite Hparenting.
-
-    eapply trans_chase. apply self_chase.
-
-    erewrite field_projection_commutes' with (h:=h); eauto.
-    f_equal.
-    Focus 2. auto.
-    Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[local_imm,local_imm]).
-      unfold uf. intros. apply @array_field_index.
-    Defined.
-    assert (Helper := fun f pf => field_projection_commutes' h (Fin.t _) (uf _) (φ _) (δ _) (δ _) _ r f _ (uf_folding _) pf (refl_δ _) array_fields (uf_fielding _ f)).
-    unfold getF in Helper. unfold uf_fielding in Helper. unfold array_field_index in *.
-    rewrite Helper.
-    reflexivity.
-    compute; eauto.
-    
+  generalize dependent c.
+  induction H.
+  + firstorder.
+  + intros. induction H1.
+    - right. eapply trans_chase; eauto.
+    - fcong t0 t.
+      apply IHchase. assumption.
 Qed.
+Lemma chase_append : forall n x h a b c,
+                       chase n x h a b ->
+                       chase n x h b c ->
+                       chase n x h a c.
+Proof.
+  intros.
+  induction H. assumption.
+  eapply trans_chase. apply IHchase. assumption. assumption.
+Qed.
+
+Definition local_sort {n} i : hpred (uf n) :=
+  λ x h, 
+  (forall j, terminating_ascent n x h j) ->
+  getF (h[x<|i|>]) = i \/
+  (
+    getF (h[x<|i|>]) ≤ getF (h[x<| getF (h[x<|i|>]) |>]) /\
+    (@eq nat (getF (h[x<|i|>])) (getF (h[x<| getF (h[x<|i|>]) |>])) ->
+        proj1_sig (to_nat i) < proj1_sig (to_nat (getF (h[x<|i|>])))
+     )
+  ).
+Lemma stable_local_sort : forall n i, stable (local_sort i) (δ n).
+Proof.
+  intros. red. intros. unfold local_sort in *.
+  induction H0; intros.
+  + destruct H0. induction (H H0).
+    - induction (fin_dec _ f i).
+      subst f. rewrite read_updated_cell. right. arrays h h'.
+      destruct H2 as [Y [Hno _]].
+      assert ((getF (h'[c])) <> i). eapply no_chase_irrefl. eassumption.
+      rewrite read_past_updated_cell. firstorder. auto.
+      rewrite read_past_updated_cell; auto. arrays h h'. left; auto.
+    - induction (fin_dec _ f i). subst f. rewrite read_updated_cell.
+      destruct H2 as [Y [Hno _]]. arrays h h'.
+      assert ((getF (h'[c])) <> i). eapply no_chase_irrefl. eassumption.
+      right. rewrite read_past_updated_cell; auto.
+      destruct H6. right.
+      rewrite read_past_updated_cell. arrays h h'.
+      destruct H2 as [Y [Hno _]]. arrays h h'.
+      assert ((getF (h'[c])) <> f). eapply no_chase_irrefl. eassumption.
+      assert (forall X, 
+                @eq nat (getF (h'[(array_write x f c)<|X|>]))
+                        (getF (h'[x<|X|>]))).
+          intros. induction (fin_dec _ X f). subst X. rewrite read_updated_cell. auto.
+          rewrite read_past_updated_cell; auto.
+      rewrite H8. auto. auto.
+  + (* union *) 
+    Admitted.
+Hint Resolve stable_local_sort.
+ 
+Next Obligation. (* δ *)
+
+  unfold Find_obligation_25 in *.
+  unfold Find_obligation_24 in *.
+  unfold Find_obligation_23 in *.
+  unfold Find_obligation_16 in *.
+  (*unfold Find_obligation_14 in *.*)
+  symmetry in Heq_anonymous. rewrite fin_beq_neq in Heq_anonymous.
+  
+  assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
+  
+  (* TODO: check out chase_rank, and chase_rank_strict, which will
+     directly give the rank/index comparisons for f0 and p.
+     Combined with rank/index comparisons for p and gparent,
+     that will give us the transitive results for two goals,
+     as well as implying the absence of a chase from gparent to f0.
+  *)
+  assert (getF(h[c']) ≤ getF(h[(h[r]<|gparent|>)])).
+      induction (fin_dec _ p gparent).
+        (* p/gparent is root *)
+        subst gparent. 
+        assert (Htmp' := heap_lookup2 h c').
+        destruct Htmp'. rewrite H1; eauto. 
+        assert (mkCell _ rnk p = h[h[r]<|f0|>]).
+            rewrite (cell_ctor_complete _ (h[h[r]<|f0|>])).
+            simpl. rewrite pfp. rewrite pfrnk. reflexivity.
+        rewrite H2. apply chase_rank. destruct Htmp; auto.
+        eapply trans_chase; eauto. rewrite <- H2. constructor.
+
+        destruct (pf_p_ptr h). destruct H0. destruct H0. rewrite pfgp in H3.
+        etransitivity; try eassumption.
+        rewrite pfrnk in H2. 
+        assert (Htmp' := heap_lookup2 h c').
+        destruct Htmp'. solve[rewrite H5; eauto].
+ 
+  eapply path_compression. 
+  + eauto. (* stray dead rt arg *)
+  + assumption.
+  + rewrite conversion_P_refeq.
+    assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
+    solve[compute; eauto].
+  + rewrite conversion_P_refeq.  
+    assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
+    simpl.
+    assert (Htmp' := pfc h). destruct Htmp'. red in H3.
+    rewrite pfp in H3.
+    destruct H3 as [Y [Hf0Y HpY]].
+    assert (Htmp' := pf_p_ptr h). red in Htmp'.
+    destruct Htmp'. destruct H3.
+    destruct H3.
+    rewrite pfgp in H3.
+    destruct H3 as [Y' [HpY' HgpY']].
+    (* TODO: Y = set f and gparent belong to... Still need to prove
+       the negative conjunct, though, (not gparent-->f)!
+       How should we do this?  Note that the following tempting
+       predicate is *not* stable:
+           sameset_chasing a b ⊓ λ x h, ~chase n x h a b
+       I'm already working on proving the first conjunct
+       stable, and it looks completeable.  The second
+       conjunct is not stable; a parent getting bumped to point
+       past a grandparent right before a grandchild is bumped to
+       its grandparent is precisely why we can't just require
+       a chase from the updated index to the grandparent
+       in the compression case of δ.
+
+    *) 
+    induction (chase_two_ordering _ (h[r]) h p _ _ HpY HpY').
+    exists Y'; intuition; eauto using chase_append. admit.
+    exists Y; intuition; eauto using chase_append. admit.
+  + rewrite conversion_P_refeq.  
+    assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
+    rewrite H2 in H0; eauto.
+  + rewrite conversion_P_refeq.  
+    assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
+    intros Hrank2.
+    induction (fin_dec _ p gparent).
+        subst gparent. eapply chase_rank_strict. eassumption. auto.
+        eapply trans_chase. constructor. simpl. rewrite pfp. reflexivity.
+        simpl. rewrite pfrnk. simpl in Hrank2. assumption.
+
+        unfold getF at 3 in Hrank2. unfold cell_parent in Hrank2.
+        specialize (pf_p_ptr h). destruct pf_p_ptr. destruct H3. destruct H3.
+        rewrite pfgp in H4. assert (X : gparent <> p) by auto. specialize (H4 X). red in H4.
+        destruct H4. rewrite pfgp in H6. rewrite <- H7 in H6. rewrite <- H7 in H5. rewrite pfrnk in H5. simpl getF at 1 in Hrank2.
+        assert (forall a b c, a = c -> a ≤ b -> b ≤ c -> a = b).
+            intros. subst a. eapply le_antisym; eauto.
+        specialize (H8 rnk (getF (h [h [r] <| p |>])) (getF (h [h [r] <| gparent |>])) Hrank2 H5 H6).
+        assert (@eq nat (getF (h [h [r] <| p |>])) (getF (h [h [r] <| gparent |>]))).
+            simpl. simpl in H8. rewrite <- H8. rewrite Hrank2. reflexivity.
+        (* TODO: consequence of stuff.... *) admit.
+
+
+Qed.
+
+
 
 Require Import Coq.Arith.Bool_nat.
 Definition gt x y := nat_lt_ge_bool y x.
@@ -1120,10 +1410,6 @@ Definition ignore {Γ Γ' T} (C:rgref Γ T Γ') : rgref Γ unit Γ' :=
   rgret tt.
 (** *** Union operation *)
 Check @getF.
-(** Coq is bad at automatically unfolding uf to an Array, so we give it a hint *)
-Global Instance uf_fields {n:nat} : FieldTyping (uf n) (fin _) := array_fields.
-Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _) f (ref{_|_}[_,_]) :=
-  array_field_index.
 Check @field_read_refine.
 Check fielding.
 Lemma uf_cell_increasing_rank :

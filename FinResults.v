@@ -19,6 +19,16 @@ Proof.
                         inversion y; subst. unfold fin_beq in *. simpl in *. eapply IHx. reflexivity.
                         unfold fin_beq in *; simpl in *. eapply IHx. reflexivity.
 Qed.
+Lemma fin_beq_neq : forall n x y, @fin_beq n x y = false <-> x <> y.
+Proof.
+  Require Import Coq.Setoids.Setoid.
+  intros.
+  split; intros.
+  + intro Hbad. 
+    rewrite <- fin_beq_eq in Hbad. rewrite Hbad in H. inversion H.
+  + red in H. 
+    rewrite <- fin_beq_eq in H. induction (fin_beq x y). exfalso. eauto. reflexivity.
+Qed. 
 Definition fin_lt {n:nat} (x y:Fin.t n) : bool :=
   Fin.rect2 (fun _ _ _ => bool)
             (* F1 F1 *) (fun _ => false)
