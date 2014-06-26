@@ -1128,17 +1128,9 @@ Program Definition Find {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (f:Fin.t (S n)
                       ⊓ (λ x h, getF(h[p_ptr]) ≤ getF(h[x<|(getF(h[p_ptr]))|>]))
                       ⊓ (λ x h, getF(h[c]) ≤ getF(h[p_ptr]))
                       ⊓ (λ x h, getF(h[p_ptr]) <> p -> nonroot_rank p (getF(h[p_ptr])) x h)
-                      (*⊓ (λ x h, getF(h[p_ptr]) <> p ->
-                                @eq nat
-                                    (getF(h[p_ptr]))
-                                    (getF(h[x<|(getF(h[p_ptr]))|>])) ->
-                                proj1_sig (to_nat p) < proj1_sig (to_nat (getF)) *)
-                      (*⊓ (λ x h, @eq nat (getF(h[p_ptr])) (getF(h[x<|(getF(h[p_ptr]))|>])) ->
-                                getF(h[p_ptr]) = p \/
-                                proj1_sig (to_nat p) < proj1_sig (to_nat (getF(h[x<|p|>]))) 
-                                (*proj1_sig (to_nat p) < proj1_sig (to_nat (getF(h[p_ptr]))) *)
-                                
-                        )*); (* CAS gives back information *)
+                      ⊓ (λ x h, getF(h[p_ptr]) <> p ->
+                                ( (getF(h[p_ptr])) < (getF(h[x<|(getF(h[p_ptr]))|>])) \/ proj1_sig (to_nat p) < proj1_sig (to_nat (getF(h[p_ptr])))))
+                      ; (* CAS gives back information *)
                    (* Sequentially: r[r[f].parent].parent *)
                    observe-field-explicit cell_parent for p_ptr --> parent as gparent, pfgp
                                                                                          in (λ x h, getF x = gparent); 
@@ -1198,20 +1190,34 @@ Next Obligation.
   split. 
   split.
   split.
+  split.
+
   red. exists (getF (h[h[r]<|p|>])). split. eapply trans_chase. constructor. auto. constructor. 
   eapply chase_rank. destruct H0. assumption. eapply trans_chase. constructor. reflexivity.
   destruct (pfc h). rewrite pfp in H1. assumption.
 
   intros. red. split. assumption. reflexivity.
 
-  (*intro. induction (fin_dec _ (getF (h[x<|p|>])) p). left; auto.
-      right. eapply chase_rank_strict; eauto.
-      eapply trans_chase; eauto. constructor.*)
+  intros. set (p_ptr := h[r]<|p|>). fold p_ptr. fold p_ptr in H.
+  assert (getF(h[p_ptr]) ≤ getF (h[h[r]<|getF(h[p_ptr])|>]) ).
+    eapply chase_rank. destruct H0. assumption. eapply trans_chase. constructor. reflexivity.
+  Require Import Coq.Arith.Lt.
+  induction (le_lt_or_eq _ _ H1).
+  + left. apply H2.
+  + right. destruct H0. eapply chase_rank_strict.
+    eassumption. auto.
+    Check (trans_chase _ x h p (getF(h[p_ptr])) (getF (h [x <| getF (h [p_ptr]) |>]))).
+    Check (trans_chase _ x h p (getF(h[p_ptr])) (getF (h [p_ptr]))).
+    assert (asdf := trans_chase _ x h p (getF(h[p_ptr])) (getF (h [p_ptr]))).
+    simpl getF at 5 in asdf.
+    apply asdf. constructor. reflexivity.
+    unfold p_ptr at 1 in H2. simpl getF at 3 in H2. apply H2.
 Qed.
 
 Next Obligation. 
   apply pred_and_stable. 
   apply pred_and_stable. 
+  apply pred_and_stable.
   apply pred_and_stable.
 
   red. intros. 
@@ -1231,6 +1237,14 @@ Next Obligation.
   left; auto.
   right.
   eapply chase_rank_strict; eauto.*)
+  
+  red. intros. arrays h h'.
+  specialize (H H1).
+  induction H0.
+  + (* compression *) (* TODO: preserves ranks *) admit.
+  + (* union *) (* TODO: if <, <+≤=<. if =, induct on xr≤xr'.*) admit.
+  + (* bump rank *) (* TODO: same as union case *) admit.
+  + (* id *) auto.
 Qed.
 
 Next Obligation. compute; intros; subst; eauto. Defined.
@@ -1304,7 +1318,7 @@ Proof.
       rewrite H8. auto. auto.
   + (* union *) 
     Admitted.
-Hint Resolve stable_local_sort.
+(*Hint Resolve stable_local_sort.*)
  
 Next Obligation. (* δ *)
 
@@ -1335,11 +1349,12 @@ Next Obligation. (* δ *)
         rewrite H2. apply chase_rank. destruct Htmp; auto.
         eapply trans_chase; eauto. rewrite <- H2. constructor.
 
-        destruct (pf_p_ptr h). destruct H0. destruct H0. rewrite pfgp in H3.
+        destruct (pf_p_ptr h). 
+        destruct H0. destruct H0. destruct H0. rewrite pfgp in H4.
         etransitivity; try eassumption.
-        rewrite pfrnk in H2. 
+        rewrite pfrnk in H3. 
         assert (Htmp' := heap_lookup2 h c').
-        destruct Htmp'. solve[rewrite H5; eauto].
+        destruct Htmp'. solve[rewrite H6; eauto].
  
   eapply path_compression. 
   + eauto. (* stray dead rt arg *)
@@ -1355,7 +1370,7 @@ Next Obligation. (* δ *)
     destruct H3 as [Y [Hf0Y HpY]].
     assert (Htmp' := pf_p_ptr h). red in Htmp'.
     destruct Htmp'. destruct H3.
-    destruct H3.
+    destruct H3. destruct H3.
     rewrite pfgp in H3.
     destruct H3 as [Y' [HpY' HgpY']].
     (* TODO: Y = set f and gparent belong to... Still need to prove
@@ -1387,17 +1402,32 @@ Next Obligation. (* δ *)
         simpl. rewrite pfrnk. simpl in Hrank2. assumption.
 
         unfold getF at 3 in Hrank2. unfold cell_parent in Hrank2.
-        specialize (pf_p_ptr h). destruct pf_p_ptr. destruct H3. destruct H3.
-        rewrite pfgp in H4. assert (X : gparent <> p) by auto. specialize (H4 X). red in H4.
-        destruct H4. rewrite pfgp in H6. rewrite <- H7 in H6. rewrite <- H7 in H5. rewrite pfrnk in H5. simpl getF at 1 in Hrank2.
-        assert (forall a b c, a = c -> a ≤ b -> b ≤ c -> a = b).
+        specialize (pf_p_ptr h). destruct pf_p_ptr. destruct H3. destruct H3. destruct H3.
+        rewrite pfgp in H5. assert (X : gparent <> p) by auto. specialize (H5 X). red in H5.
+        destruct H5. rewrite pfgp in H7. rewrite <- H8 in H6. rewrite <- H8 in H7. rewrite pfrnk in H6. simpl getF at 1 in Hrank2.
+        assert (Hconverge : forall a b c, a = c -> a ≤ b -> b ≤ c -> a = b).
             intros. subst a. eapply le_antisym; eauto.
-        specialize (H8 rnk (getF (h [h [r] <| p |>])) (getF (h [h [r] <| gparent |>])) Hrank2 H5 H6).
+        specialize (Hconverge rnk (getF (h [h [r] <| p |>])) (getF (h [h [r] <| gparent |>])) Hrank2 H6 H7).
         assert (@eq nat (getF (h [h [r] <| p |>])) (getF (h [h [r] <| gparent |>]))).
-            simpl. simpl in H8. rewrite <- H8. rewrite Hrank2. reflexivity.
-        (* TODO: consequence of stuff.... *) admit.
+            simpl. simpl in Hconverge. rewrite <- Hconverge. rewrite Hrank2. reflexivity.
+        (* Now we know rank(f)=rank(p)=rank(gparent). Each of these links implies that the indices in question are sorted, which is enough to prove our goal by transitivity. *)
+        etransitivity.
+        destruct Htmp. (* will need h[r] to unify with a variable before creating existential *)
+        eapply sort_equiv_rank. eassumption.
+        eapply trans_chase. constructor. simpl. rewrite pfp. reflexivity.
+        auto.
+        simpl. rewrite pfrnk. apply Hconverge.
 
-
+        (* this second step of transitivity is a bit trickier.
+           we don't know that p.parent=gparent in the current
+           heap.  But we do know that if the ranks were equal
+           at the time we read out p_ptr, then they're sorted. *)
+        simpl.
+        rewrite pfgp in H4. specialize (H4 X).
+        induction H4.
+        rewrite <- H8 in H4. simpl getF at 2 in H9. rewrite <- H9 in H4.
+        exfalso. apply (lt_irrefl _ H4).
+        assumption.
 Qed.
 
 
