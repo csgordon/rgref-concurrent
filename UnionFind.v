@@ -73,6 +73,12 @@ Inductive δ (n:nat) : hrel (uf n) :=
                             f's new path is f-->h[c].parent-->...->root, and anything reaching f is <whatever>-->f->...
                             Thus terminating_ascent is preserved.
                             We require (2) to ensure we don't spuriously munge sets...
+                            Note that this permits /extending/ the path to the root!  This is true of the original paper as well.
+                            We may do all of the reads for the compression CAS on an element i, and just before the CAS, several other
+                            threads perform lookups on the parent, and each completes /the parent's/ *first* compression.  This moves the parent
+                            several links closer to the root, without affecting the (original) grandparent-of-i's distance from the root.
+                            Then the CAS in the original lookup of i succeeds, swapping i's parent from the original parent (now much closer to the root)
+                            to the original grandparent, which is (momentarily) further from the root than the original parent!
                          *)
                          (exists Y, ~chase n x h (getF (h[c])) f /\
                                      chase n x h (getF (h[c])) Y /\
@@ -1024,6 +1030,12 @@ Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[l
   unfold uf. intros. apply @array_field_index.
 Defined.
 
+Lemma chase_dec': forall n x h i j, φ n x h -> chase n x h i j \/ ~chase n x h i j.
+Proof.
+  intros. induction (fin_dec _ i j). subst. left. constructor.
+  apply chase_dec; eauto.
+Qed.
+
 Definition sameset_chasing {n:nat} i j : hpred (uf n) :=
   λ x h, 
     exists Y,
@@ -1039,7 +1051,49 @@ Proof.
     (* If Y-->f (Y below f) or i and j both above f, then unaffected.
           if f is on the path from i or j to Y, then ex Y' that the new stuff points to, and Y-->Y'.
    *) 
- admit.
+    assert (chase n x h Y f -> 
+            forall b, chase n x h b Y -> chase n (array_write x f c) h b Y).
+        clear H0. clear H1. clear H2. clear H3.
+        intros.
+        induction H0.
+            induction H1. constructor.
+            induction (fin_dec _ f i0). subst i0. constructor.
+            eapply trans_chase. apply IHchase; eauto.
+            rewrite read_past_updated_cell; eauto. 
+            induction H1. constructor.
+            induction (fin_dec _ f i0).
+               subst i0. assert (f = t). eapply Hdouble; eauto. destruct H; eassumption.
+                 eapply trans_chase; try eassumption.
+                 eapply trans_chase'; try eassumption. auto.
+               subst t.
+               assert (f = f0). eapply Hdouble; eauto. destruct H; eassumption.
+               eapply trans_chase; eauto.
+               eapply trans_chase'; eauto. constructor.
+               subst f0. constructor.
+               
+               eapply trans_chase; eauto.
+               rewrite read_past_updated_cell; eauto.
+               rewrite H3. apply IHchase0; eauto.
+               intros.
+               specialize (IHchase HiY0 HjY0).
+               assert (chase n x h i0 t). eapply trans_chase; eauto.
+               specialize (IHchase H5).
+               induction (fin_dec _ i0 t). subst i0.
+                   assert (t0 = t). eapply Hdouble; eauto. destruct H; eassumption.
+                     eapply trans_chase; eauto. constructor.
+                   rewrite H6. constructor.
+               eapply chase_step; eauto. clear IHchase0.
+               rewrite read_past_updated_cell; eauto.
+
+    induction (chase_dec' n x h Y f); eauto.
+        exists Y. split; eauto using chase_new_heap.
+            
+        assert (Y <> f). eauto using no_chase_irrefl.
+        destruct H1 as [Y' [Hnochase [HcY' HfY']]].
+        assert (getF(h[c]) <> f). eauto using no_chase_irrefl.
+        admit.
+
+
   + (* union *) 
     exists Y.
     assert (forall q, q<>x ->
@@ -1047,9 +1101,26 @@ Proof.
         intros q Hne. 
         rewrite read_past_updated_cell; eauto.
     induction (fin_dec _ i x).
-    subst i. 
-    (* TODO: stable, but tricky: (not i-->j) and j-->i is crucial, since it shows they were originally in the same set, so the negative conjunct doesn't fail due to merging sets *) admit.
-    admit.
+        subst i. 
+        Check @getF.
+        assert (forall n (x:uf n) h (a b: fin n), chase n x h a b -> getF (h[x<|a|>]) = a -> a = b).
+            intros. induction H5. auto. fcong i t. auto.
+        assert (x = Y). eapply H5. eassumption. rewrite H. reflexivity. subst x.
+        split. constructor.
+        clear HiY H0 H1 H5 H3.
+        induction (fin_dec _ Y j). subst j. constructor.
+        induction HjY. exfalso. auto.
+        induction (fin_dec _ f t). subst t.
+            eapply trans_chase; try apply H0. constructor. arrays h' h. 
+        eapply trans_chase; try apply H0. eapply IHHjY. assumption. assumption. assumption.
+        arrays h' h. 
+
+        cut (forall a b, chase n A h a b -> chase n (array_write A x c) h' a b).
+        eauto.
+        intros. induction H5. constructor.
+        induction (fin_dec _ i0 x). subst i0.
+            rewrite H in H6. subst t. simpl in H5. simpl in IHchase. assumption.
+            eapply trans_chase; eauto. arrays h' h.
 
   + (* bump rank *) 
     exists Y.
@@ -1074,6 +1145,7 @@ Proof.
     intros; arrays h' h; eauto.
     intros; arrays h' h; eauto.
   + (* id *) exists Y; intuition; eauto using chase_new_heap.
+Grab Existential Variables. exact h. exact h. exact h. exact h.
 Qed.
 Definition nonroot_rank {n:nat} i (rnk:nat) : hpred (uf n) :=
   λ x h, getF (h[x<|i|>]) <> i /\ getF (h[x<|i|>]) = rnk.
@@ -1281,6 +1353,7 @@ Proof.
   eapply trans_chase. apply IHchase. assumption. assumption.
 Qed.
 
+(*
 Definition local_sort {n} i : hpred (uf n) :=
   λ x h, 
   (forall j, terminating_ascent n x h j) ->
@@ -1317,8 +1390,8 @@ Proof.
           rewrite read_past_updated_cell; auto.
       rewrite H8. auto. auto.
   + (* union *) 
-    Admitted.
 (*Hint Resolve stable_local_sort.*)
+    *)
  
 Next Obligation. (* δ *)
 
