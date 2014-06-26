@@ -1305,17 +1305,33 @@ Next Obligation.
   intros x x' h h'.
   intros. eapply nonroot_rank_stable; eauto. arrays h h'. apply H. assumption.
 
-  (*red. intros. arrays h h'. induction (fin_dec _ (getF (h'[t])) p).
-  left; auto.
-  right.
-  eapply chase_rank_strict; eauto.*)
   
   red. intros. arrays h h'.
   specialize (H H1).
   induction H0.
-  + (* compression *) (* TODO: preserves ranks *) admit.
-  + (* union *) (* TODO: if <, <+≤=<. if =, induct on xr≤xr'.*) admit.
-  + (* bump rank *) (* TODO: same as union case *) admit.
+  + (* compression *) (* preserves ranks *)
+    assert (forall q, @eq nat (getF(h[x<|q|>])) (getF(h[(array_write x f1 c0)<|q|>]))).
+        intros. induction (fin_dec _ q f1). subst f1. rewrite read_updated_cell. rewrite <- H2. reflexivity.
+        rewrite read_past_updated_cell; eauto.
+    unfold getF in H6. unfold cell_rank in H6. arrays h' h. 
+    induction H; eauto.
+        rewrite <- H6. auto.
+  + (* union *) (* if <, <+≤=<. if =, induct on xr≤xr'.*)
+    set (qq := getF(f:=parent)(h'[t])).
+    unfold getF in qq. unfold cell_parent in qq. fold qq. fold qq in H.
+    induction (fin_dec _ x qq).
+        rewrite <- a in *. arrays h h'. rewrite H0 in *. rewrite H2.
+            induction H. left.  eauto with arith.
+                         right. assumption.
+        arrays h h'.
+  + (* bump rank *) (* same as union case *)
+    set (qq := getF(f:=parent)(h'[t])).
+    unfold getF in qq. unfold cell_parent in qq. fold qq. fold qq in H.
+    induction (fin_dec _ x qq).
+        rewrite <- a in *. arrays h h'. rewrite H0 in *. rewrite H3.
+            induction H. left.  eauto with arith.
+                         right. assumption.
+        arrays h h'.
   + (* id *) auto.
 Qed.
 
