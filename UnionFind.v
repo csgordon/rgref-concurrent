@@ -1111,6 +1111,35 @@ Proof.
 
           Now I just have to get the induction structure to work out.
          *)
+        induction (chase_dec' n x h (getF(h[c])) Y); try assumption.
+            assert (chase n (array_write x f c) h' (getF(h[c])) Y).
+                apply chase_new_heap with (h:=h).
+                clear H4 H3 H2 HcY' HfY' HiY HjY.
+                induction H7. constructor.
+                eapply trans_chase.
+                eapply IHchase. eapply no_chase_step. apply Hnochase. eapply no_chase_irrefl. eassumption. assumption. assumption. assumption.
+                rewrite read_past_updated_cell. assumption.
+                assert (i0 <> f). eauto using no_chase_irrefl.
+                auto.
+            exists Y. split.
+                clear dependent j. clear H2 H3 H4.
+                induction HiY. constructor.
+                specialize (IHHiY H5 H6 H7 H8).
+                induction (fin_dec _ f i). subst i.
+                    eapply trans_chase. apply H8.
+                      rewrite read_updated_cell. arrays h h'. reflexivity.
+                    eapply trans_chase. apply IHHiY.
+                      rewrite read_past_updated_cell. arrays h h'. auto.
+                    assumption.
+                clear dependent i. clear H2 H3 H4.
+                induction HjY. constructor.
+                specialize (IHHjY H5 H6 H7 H8).
+                induction (fin_dec _ f i). subst i.
+                    eapply trans_chase. apply H8.
+                      rewrite read_updated_cell. arrays h h'. reflexivity.
+                    eapply trans_chase. apply IHHjY.
+                      rewrite read_past_updated_cell. arrays h h'. auto.
+                    assumption.
 
         admit.
 
