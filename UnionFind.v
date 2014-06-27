@@ -1091,6 +1091,27 @@ Proof.
         assert (Y <> f). eauto using no_chase_irrefl.
         destruct H1 as [Y' [Hnochase [HcY' HfY']]].
         assert (getF(h[c]) <> f). eauto using no_chase_irrefl.
+        (** When would we need to change the choice of common ancestor?
+            For the choice of common ancestor to become invalid, it would require that overwriting f would break either i or j's path to Y, AND that the actual value we overwrite with doesn't restore the path.  So this means we only need to change Y when BOTH of the following hold:
+          1. i->f->Y and/or j->f->Y, AND
+          2. not (getF(h[c]) -> Y) 
+
+          If neither of i or j reaches f, the i-j-Y triad is either above f (we already checked not(Y->f), so they're not below f),
+          below getF(h[c]), or in another set entirely, so the whole of both paths can be reused.
+
+          If i or j reaches f but getF(h[c])->Y, we can reuse the path up until f, then stick on the new (unaffected) path.
+
+          When we are in the case of the write breaking the paths to Y, we know f->Y, f->Y', getF(h[c])->Y', and not(getF(h[c])->Y).
+          Clearly Y<>Y'.
+          Since f->Y and f->Y', Y->Y' or Y'->Y (new lemma).
+          Y'->Y and getF(h[c])->Y' implies getF(h[c])->Y, which is a contradiction, so just Y->Y'. (all in original heap/array)
+          This means that i->Y' and j->Y' in the original heap.
+          So we can choose Y' as the new common ancestor,
+          and reuse the {i,j}->Y' path until we hit f, then tack on the unaffected getF(h[c])->Y' path.
+
+          Now I just have to get the induction structure to work out.
+         *)
+
         admit.
 
 
