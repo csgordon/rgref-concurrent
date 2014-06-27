@@ -1476,9 +1476,63 @@ Next Obligation. (* δ *)
        in the compression case of δ.
 
     *) 
+    assert (~chase _ (h[r]) h gparent f0).
+        assert (H3 : True) by auto. (* filler for hoisted code *)
+        intro.
+        assert (getF(h[h[r]<|gparent|>]) ≤ getF(h[h[r]<|f0|>])).
+            eapply chase_rank. assumption. assumption.
+        simpl getF at 2 in H10. unfold cell_rank in *. rewrite pfrnk in H10.
+        rewrite H2 in H0; eauto.
+        assert(rnk = getF(h[h[r]<|gparent|>])).
+            eapply le_antisym; eauto.
+        rewrite pfrnk in H7. rewrite pfgp in H8. rewrite pfgp in *; eauto.
+        induction (fin_dec _ gparent p).
+            subst gparent. clear H5 H6. unfold getF in H11. unfold cell_rank in H11.
+            rewrite <- H11 in H8.
+            assert (rnk = getF(h[p_ptr])).
+                eapply le_antisym; eauto.
+            assert (proj1_sig (to_nat f0) < proj1_sig (to_nat p)).
+                eapply chase_rank_strict. eassumption. auto.
+                eapply trans_chase. constructor. 
+                unfold getF. unfold cell_parent. rewrite pfp. reflexivity.
+                compute. rewrite pfrnk. auto.
+            assert (proj1_sig (to_nat p) < proj1_sig (to_nat f0)).
+                eapply chase_rank_strict. eassumption. auto.
+                assumption.
+                unfold getF. unfold cell_rank. rewrite pfrnk. auto.
+            eapply lt_asym; eauto.
+          (* gparent <> p *)
+            specialize (H6 b). red in H6. destruct H6.
+            specialize (H5 b).
+            rewrite <- H12 in *.
+            induction H5.
+                assert (getF(h[h[r]<|p|>]) < rnk).
+                    rewrite H11. apply H5.
+                eapply (lt_not_le); eauto.
+
+                assert (rnk = getF(h[h[r]<|p|>])).
+                    unfold getF in H11. unfold cell_rank in H11. rewrite <- H11 in H8. 
+                    eapply (le_antisym); eauto.
+                assert (proj1_sig (to_nat f0) < proj1_sig (to_nat p)).
+                    eapply chase_rank_strict; eauto.
+                    eapply trans_chase. constructor. simpl. rewrite pfp.
+
+                    reflexivity.
+                    simpl. rewrite pfrnk. apply H13.
+                assert (proj1_sig (to_nat f0) < proj1_sig (to_nat gparent)).
+                    etransitivity; eauto.
+                assert (proj1_sig (to_nat gparent) < proj1_sig (to_nat f0)).
+                    eapply chase_rank_strict; eauto.
+                    induction (fin_dec _ gparent f0).
+                        subst gparent. exfalso. eapply lt_asym; eauto.
+                        assumption.
+                    simpl. rewrite pfrnk. simpl in H11. auto.
+                eapply lt_asym; eauto.
+
     induction (chase_two_ordering _ (h[r]) h p _ _ HpY HpY').
-    exists Y'; intuition; eauto using chase_append. admit.
-    exists Y; intuition; eauto using chase_append. admit.
+    exists Y'; intuition; eauto using chase_append.
+    exists Y; intuition; eauto using chase_append.
+
   + rewrite conversion_P_refeq.  
     assert (Htmp' := heap_lookup2 h c'). destruct Htmp'. rewrite H2; eauto.
     rewrite H2 in H0; eauto.
