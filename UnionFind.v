@@ -1236,7 +1236,38 @@ Proof.
                                    subst Y'.
                                    apply H7. eapply chase_append.
                                      apply HcY'. apply H15.
-          - (* j->f, not i->f.  Dual of previous... *) admit.
+          - (* j->f, not i->f.  Dual of previous... *)
+          assert (chase n x h f Y \/ chase n x h Y f). eauto using chase_two_ordering.
+          assert (chase n x h f Y). induction H13. assumption. exfalso. solve[auto].
+          assert (chase n x h Y Y' \/ chase n x h Y' Y). eauto using chase_two_ordering.
+          assert (forall q z, chase n x h q z -> ~chase n x h q f ->
+                              chase n (array_write x f c) h' q z).
+              clear H0 Hnochase HcY' HfY' H2 H3 H4 H5 H6 H7.
+              intros. induction H0. constructor.
+                   
+                      eapply trans_chase.
+                      apply IHchase. eapply no_chase_step; eauto.
+                        eapply no_chase_irrefl. apply H2.
+                      rewrite read_past_updated_cell.
+                      arrays h h'. assumption.
+                      assert (i0 <> f) by eauto using no_chase_irrefl. auto.
+          induction H15.
+              exists Y'. split; eapply chase_append; eauto.
+              exists Y. split. 
+                               solve[eauto].
+                               eapply chase_append. 
+                               eapply H10. assumption.
+                               eapply trans_chase.
+                                   Focus 2. arrays h h'. reflexivity. arrays h h'. 
+                                            eapply chase_append. eassumption.
+                                   eapply H16. assumption.
+                                   intros Hbad.
+                                   assert (Y' = f). eapply Hdouble. destruct H. eassumption.
+                                       assumption. assumption.
+                                   subst Y'.
+                                   apply H7. eapply chase_append.
+                                     apply HcY'. apply H15.
+
           - (* neither i nor j is affected. *)
             exists Y. 
           assert (forall q z, chase n x h q z -> ~chase n x h q f ->
