@@ -892,165 +892,6 @@ Qed.
 Hint Resolve refl_δ.
 Instance read_uf {n:nat} : readable_at (uf n) (δ n) (δ n) := id_fold.
 
-(** ** Union-Find Operations *)
-
-(** *** Helper property *)
-Definition init_cell {n:nat} (i:nat) (pf:i<n) : hpred (cell n) :=
-  (fun x h => x = mkCell n 0 (of_nat_lt pf)).
-Lemma prec_init : forall n i pf, precise_pred (@init_cell n i pf).
-Proof. intros; red; intros. inversion H. constructor. Qed.
-Hint Resolve prec_init.
-Lemma stable_init : forall n i pf, stable (@init_cell n i pf) local_imm.
-Proof. intros. red; intros. inversion H0; subst. auto. Qed.
-Hint Resolve stable_init.
-
-(** *** Allocation of a union-find structure *)
-Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf (S n)|φ _}[δ _, δ _]) Γ :=
-  indep_array_conv_alloc n (fun i pf => alloc (init_cell i pf) local_imm local_imm 
-                                              (mkCell (S n) 0 (of_nat_lt pf)) _ _ _ _ _ _
-                           ) _ _.
-Next Obligation. constructor. Qed.
-Next Obligation. eapply convert; eauto. Defined.
-Next Obligation.
-  (* Prove φ of the initial array.  Need the array allocation to expose some summary of the
-     initialization process, something like making the result of the allocation function
-     depend on the index, together with a conversion that weakens that result (like loosening
-     a refinement that the parent pointer is the cell number initially) and some way to
-     stitch those together for an array-wide refinement... *)
-  unfold alloc_uf_obligation_7 in *.
-  constructor. intros.
-  constructor.
-  assert (exists i0, exists (pf:i0 < S n), i = of_nat_lt pf).
-      exists (proj1_sig (to_nat i)). exists (proj2_sig (to_nat i)).
-      clear H. clear A. induction i. compute; auto. 
-          unfold to_nat; fold (@to_nat (n0)).
-          destruct (to_nat i).
-          unfold proj2_sig. simpl.
-          f_equal. rewrite IHi. f_equal. simpl.
-          apply ProofIrrelevance.proof_irrelevance.
-  destruct H0 as [i0 [pf H0]].
-  specialize (H i0 pf). destruct H as [f0 Hconv].
-  rewrite H0. assert (Htmp := heap_lookup2 h f0). simpl in Htmp.
-  rewrite Hconv.
-  rewrite <- (convert_equiv f0). rewrite Htmp. simpl. auto.
-Qed.
-
-(* This will show up with any array read. *)
-Lemma uf_folding : forall n, 
-    res (T := uf n) (R := δ n) (G := δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
-  intros. simpl. unfold uf. reflexivity.
-(*  f_equal. 
-  (* Need to use this axiom for prove the equality, but I need this term
-     (uf_folding n) to be definitionally equal to eq_refl later for some rewriting...*)
-  eapply rgref_exchange; try solve [compute; eauto].
-  split; red; intros.
-      destruct H; auto.
-      split; auto. intros. inversion H; subst a'; subst a.
-      (* Need to destruct an application of ascent_root... *)
-      eapply path_compression; try  rewrite array_id_update.
-.*)
-Defined. (* need to unfold later *)
-Hint Resolve uf_folding.
-Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
-Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
-
-(** *** UpdateRoot *)
-Require Import Coq.Arith.Arith.
-Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t (S n)) (oldrank:nat) (y:Fin.t (S n)) (newrank:nat) 
-  (pf:forall h, x=y/\newrank>oldrank \/ 
-                    (newrank=oldrank/\newrank ≤ getF (f:=rank)(FT:=nat) (h[h[A]<|y|>])
-                     /\ (newrank = getF(f:=rank)(FT:=nat)(h[h[A]<|y|>]) -> fin_lt x y = true)))
-: rgref Γ bool Γ :=
-  old <- rgret (A ~> x) ;
-  observe-field-explicit cell_parent for old --> parent as oparent, pfp in (λ x h, getF x = oparent);
-  observe-field-explicit (@cell_rank (S n)) for old --> rank as orank, pfp in (λ x h, getF x = orank);
-  match (orb (negb (fin_beq oparent (*old ~> parent*) x))
-          (negb (beq_nat orank (*old~>rank*) oldrank)))
-  with
-  (*then*) |true => rgret false
-  (*else*)|false=> (
-      new <- alloc' any local_imm local_imm (mkCell (S n) newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
-      (*fCAS( A → x , old, convert new _ _ _ _ _ _ _ _)*)
-      (@field_cas_core _ _ _ _ _ _ _ _ A x _ _ old (convert new _ _ _ _ _ _ _ _) _)
-  )
-  end
-.
-Next Obligation. compute; intros; subst; eauto. Qed.
-Next Obligation. compute; intros; subst; eauto. Qed.
-Next Obligation.
-  
-  unfold UpdateRoot_obligation_13.
-  unfold UpdateRoot_obligation_14.
-  unfold UpdateRoot_obligation_15.
-  unfold UpdateRoot_obligation_16.
-  unfold UpdateRoot_obligation_17.
-  unfold UpdateRoot_obligation_18.
-  unfold UpdateRoot_obligation_19.
-  unfold UpdateRoot_obligation_20.
-  unfold UpdateRoot_obligation_21.
-  unfold UpdateRoot_obligation_22.
-  assert (H := heap_lookup2 h new).
-  destruct H.
-  
-  assert (forall (A B:bool), false = (A || B)%bool -> false = A /\ false = B).
-      intros. induction A0. inversion H1. induction B. inversion H1. auto.
-  assert (Htmp := H1 _ _ Heq_anonymous). clear H1.
-  destruct Htmp.
-  assert (forall (B:bool), false = negb B -> true = B).
-      intros. induction B; inversion H1; eauto.
-
-  assert (H' := H3 _ H1). symmetry in H'. rewrite fin_beq_eq in H'.
-  Locate beq_nat.
-  assert (H'' := H3 _ H2). assert (H''' := beq_nat_eq _ _ H'').
-  clear H3. clear H''.
-
-  induction (pf h) as [a | b].
-  (* bump rank *)
-  destruct a. subst y.
-  apply bump_rank with (xr := oldrank) (xr' := newrank).
-  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
-  rewrite (cell_ctor_complete _ (h[h[A]<|x|>])). f_equal; eauto.
-  subst. compute [getF cell_rank]. eauto.
-  subst. compute [getF cell_parent]. eauto.
-  eauto with arith.
-  rewrite <- convert_equiv. eauto.
-
-  (* path union *)
-  eapply path_union.
-  
-  cut (h[ h[A]<|x|>] = mkCell _ oldrank x).
-  intro t; apply t.
-
-  rewrite (cell_ctor_complete _ (h[ _ ])).
-  f_equal; eauto.
-  subst. compute [getF cell_rank]. eauto.
-  subst. compute [getF cell_parent]. eauto.
-
-  rewrite <- convert_equiv. apply H0. firstorder.
-  
-  destruct b. subst oldrank. subst orank. reflexivity.
-  reflexivity.
-  destruct b.
-  destruct H4.
-  inversion H4.
-      right. split; try reflexivity. intuition. rewrite fin_lt_nat in *. assumption.
-  left.
-  assert (forall a b c, a ≤ b -> S b = c -> a < c).
-      intros. compute. assert (S a ≤ S b). apply le_n_S; eauto.
-      rewrite H9 in H10. assumption.
-  eapply H8; eauto.
-
-Qed. (* UpdateRoot guarantee (δ n) *)
-
-(** Coq is bad at automatically unfolding uf to an Array, so we give it a hint *)
-Global Instance uf_fields {n:nat} : FieldTyping (uf n) (fin _) := array_fields.
-Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _) f (ref{_|_}[_,_]) :=
-  array_field_index.
-Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[local_imm,local_imm]).
-  unfold uf. intros. apply @array_field_index.
-Defined.
-
-
 Lemma chase_append : forall n x h a b c,
                        chase n x h a b ->
                        chase n x h b c ->
@@ -1362,7 +1203,184 @@ Proof.
   + split; arrays h h'; eauto.
 Qed.
 Hint Resolve nonroot_rank_stable.
+Lemma rank_lb_stable : forall n r i, 
+                         stable (λ x h, r ≤ getF (h[x<|i|>]))
+                                (δ n).
+Proof.
+  intros. red. intros.
+  induction H0.
+  + induction (fin_dec _ f i). 
+      subst f. rewrite read_updated_cell. arrays h h'. rewrite <- H1. assumption.
+      rewrite read_past_updated_cell; auto. arrays h h'. auto.
+  + induction (fin_dec _ x i).
+      subst x. rewrite read_updated_cell. arrays h h'. rewrite H1.
+        rewrite H0 in H. simpl in H. simpl. eauto with arith.
+      rewrite read_past_updated_cell; auto. arrays h h'. auto. 
+  + induction (fin_dec _ x i).
+      subst x. rewrite read_updated_cell. arrays h h'. rewrite H2.
+        rewrite H0 in H. eauto with arith.
+      rewrite read_past_updated_cell; auto. arrays h h'. auto.
+  + arrays h h'. assumption.
+Qed.
 
+
+(** ** Union-Find Operations *)
+
+(** *** Helper property *)
+Definition init_cell {n:nat} (i:nat) (pf:i<n) : hpred (cell n) :=
+  (fun x h => x = mkCell n 0 (of_nat_lt pf)).
+Lemma prec_init : forall n i pf, precise_pred (@init_cell n i pf).
+Proof. intros; red; intros. inversion H. constructor. Qed.
+Hint Resolve prec_init.
+Lemma stable_init : forall n i pf, stable (@init_cell n i pf) local_imm.
+Proof. intros. red; intros. inversion H0; subst. auto. Qed.
+Hint Resolve stable_init.
+
+(** *** Allocation of a union-find structure *)
+Program Definition alloc_uf {Γ} (n:nat) : rgref Γ (ref{uf (S n)|φ _}[δ _, δ _]) Γ :=
+  indep_array_conv_alloc n (fun i pf => alloc (init_cell i pf) local_imm local_imm 
+                                              (mkCell (S n) 0 (of_nat_lt pf)) _ _ _ _ _ _
+                           ) _ _.
+Next Obligation. constructor. Qed.
+Next Obligation. eapply convert; eauto. Defined.
+Next Obligation.
+  (* Prove φ of the initial array.  Need the array allocation to expose some summary of the
+     initialization process, something like making the result of the allocation function
+     depend on the index, together with a conversion that weakens that result (like loosening
+     a refinement that the parent pointer is the cell number initially) and some way to
+     stitch those together for an array-wide refinement... *)
+  unfold alloc_uf_obligation_7 in *.
+  constructor. intros.
+  constructor.
+  assert (exists i0, exists (pf:i0 < S n), i = of_nat_lt pf).
+      exists (proj1_sig (to_nat i)). exists (proj2_sig (to_nat i)).
+      clear H. clear A. induction i. compute; auto. 
+          unfold to_nat; fold (@to_nat (n0)).
+          destruct (to_nat i).
+          unfold proj2_sig. simpl.
+          f_equal. rewrite IHi. f_equal. simpl.
+          apply ProofIrrelevance.proof_irrelevance.
+  destruct H0 as [i0 [pf H0]].
+  specialize (H i0 pf). destruct H as [f0 Hconv].
+  rewrite H0. assert (Htmp := heap_lookup2 h f0). simpl in Htmp.
+  rewrite Hconv.
+  rewrite <- (convert_equiv f0). rewrite Htmp. simpl. auto.
+Qed.
+
+(* This will show up with any array read. *)
+Lemma uf_folding : forall n, 
+    res (T := uf n) (R := δ n) (G := δ n) = Array n (ref{cell n|any}[local_imm,local_imm]).
+  intros. simpl. unfold uf. reflexivity.
+(*  f_equal. 
+  (* Need to use this axiom for prove the equality, but I need this term
+     (uf_folding n) to be definitionally equal to eq_refl later for some rewriting...*)
+  eapply rgref_exchange; try solve [compute; eauto].
+  split; red; intros.
+      destruct H; auto.
+      split; auto. intros. inversion H; subst a'; subst a.
+      (* Need to destruct an application of ascent_root... *)
+      eapply path_compression; try  rewrite array_id_update.
+.*)
+Defined. (* need to unfold later *)
+Hint Resolve uf_folding.
+Hint Extern 4 (rgfold _ _ = Array _ _) => apply uf_folding.
+Hint Extern 4 (Array _ _ = Array _ _) => apply uf_folding.
+
+(** *** UpdateRoot *)
+Require Import Coq.Arith.Arith.
+Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t (S n)) (oldrank:nat) (y:Fin.t (S n)) (newrank:nat) 
+  (pf:forall h, x=y/\newrank>oldrank \/ 
+                    (newrank=oldrank/\newrank ≤ getF (f:=rank)(FT:=nat) (h[h[A]<|y|>])
+                     /\ (newrank = getF(f:=rank)(FT:=nat)(h[h[A]<|y|>]) -> fin_lt x y = true)))
+: rgref Γ bool Γ :=
+  old <- rgret (A ~> x) ;
+  observe-field-explicit cell_parent for old --> parent as oparent, pfp in (λ x h, getF x = oparent);
+  observe-field-explicit (@cell_rank (S n)) for old --> rank as orank, pfp in (λ x h, getF x = orank);
+  match (orb (negb (fin_beq oparent (*old ~> parent*) x))
+          (negb (beq_nat orank (*old~>rank*) oldrank)))
+  with
+  (*then*) |true => rgret false
+  (*else*)|false=> (
+      new <- alloc' any local_imm local_imm (mkCell (S n) newrank y) _ _ _ _ _ _; (*Alloc (mkCell n newrank y);*)
+      (*fCAS( A → x , old, convert new _ _ _ _ _ _ _ _)*)
+      (@field_cas_core _ _ _ _ _ _ _ _ A x _ _ old (convert new _ _ _ _ _ _ _ _) _)
+  )
+  end
+.
+Next Obligation. compute; intros; subst; eauto. Qed.
+Next Obligation. compute; intros; subst; eauto. Qed.
+Next Obligation.
+  
+  unfold UpdateRoot_obligation_13.
+  unfold UpdateRoot_obligation_14.
+  unfold UpdateRoot_obligation_15.
+  unfold UpdateRoot_obligation_16.
+  unfold UpdateRoot_obligation_17.
+  unfold UpdateRoot_obligation_18.
+  unfold UpdateRoot_obligation_19.
+  unfold UpdateRoot_obligation_20.
+  unfold UpdateRoot_obligation_21.
+  unfold UpdateRoot_obligation_22.
+  assert (H := heap_lookup2 h new).
+  destruct H.
+  
+  assert (forall (A B:bool), false = (A || B)%bool -> false = A /\ false = B).
+      intros. induction A0. inversion H1. induction B. inversion H1. auto.
+  assert (Htmp := H1 _ _ Heq_anonymous). clear H1.
+  destruct Htmp.
+  assert (forall (B:bool), false = negb B -> true = B).
+      intros. induction B; inversion H1; eauto.
+
+  assert (H' := H3 _ H1). symmetry in H'. rewrite fin_beq_eq in H'.
+  Locate beq_nat.
+  assert (H'' := H3 _ H2). assert (H''' := beq_nat_eq _ _ H'').
+  clear H3. clear H''.
+
+  induction (pf h) as [a | b].
+  (* bump rank *)
+  destruct a. subst y.
+  apply bump_rank with (xr := oldrank) (xr' := newrank).
+  Axiom cell_ctor_complete : forall n (c:cell n), c = mkCell _ (getF c) (getF c).
+  rewrite (cell_ctor_complete _ (h[h[A]<|x|>])). f_equal; eauto.
+  subst. compute [getF cell_rank]. eauto.
+  subst. compute [getF cell_parent]. eauto.
+  eauto with arith.
+  rewrite <- convert_equiv. eauto.
+
+  (* path union *)
+  eapply path_union.
+  
+  cut (h[ h[A]<|x|>] = mkCell _ oldrank x).
+  intro t; apply t.
+
+  rewrite (cell_ctor_complete _ (h[ _ ])).
+  f_equal; eauto.
+  subst. compute [getF cell_rank]. eauto.
+  subst. compute [getF cell_parent]. eauto.
+
+  rewrite <- convert_equiv. apply H0. firstorder.
+  
+  destruct b. subst oldrank. subst orank. reflexivity.
+  reflexivity.
+  destruct b.
+  destruct H4.
+  inversion H4.
+      right. split; try reflexivity. intuition. rewrite fin_lt_nat in *. assumption.
+  left.
+  assert (forall a b c, a ≤ b -> S b = c -> a < c).
+      intros. compute. assert (S a ≤ S b). apply le_n_S; eauto.
+      rewrite H9 in H10. assumption.
+  eapply H8; eauto.
+
+Qed. (* UpdateRoot guarantee (δ n) *)
+
+(** Coq is bad at automatically unfolding uf to an Array, so we give it a hint *)
+Global Instance uf_fields {n:nat} : FieldTyping (uf n) (fin _) := array_fields.
+Global Instance uf_field_index {n:nat}{T:Set}{f:fin _} : FieldType (uf n) (fin _) f (ref{_|_}[_,_]) :=
+  array_field_index.
+Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[local_imm,local_imm]).
+  unfold uf. intros. apply @array_field_index.
+Defined.
 
 (** *** Find operation *)
 Program Definition Find {Γ n} (r:ref{uf (S n)|φ _}[δ _, δ _]) (f:Fin.t (S n)) : rgref Γ (Fin.t (S n)) Γ :=
@@ -1414,26 +1432,6 @@ Next Obligation.
   eapply chase_rank. assumption. eapply trans_chase. constructor. reflexivity.
                         
 Qed.
-Lemma rank_lb_stable : forall n r i, 
-                         stable (λ x h, r ≤ getF (h[x<|i|>]))
-                                (δ n).
-Proof.
-  intros. red. intros.
-  induction H0.
-  + induction (fin_dec _ f i). 
-      subst f. rewrite read_updated_cell. arrays h h'. rewrite <- H1. assumption.
-      rewrite read_past_updated_cell; auto. arrays h h'. auto.
-  + induction (fin_dec _ x i).
-      subst x. rewrite read_updated_cell. arrays h h'. rewrite H1.
-        rewrite H0 in H. simpl in H. simpl. eauto with arith.
-      rewrite read_past_updated_cell; auto. arrays h h'. auto. 
-  + induction (fin_dec _ x i).
-      subst x. rewrite read_updated_cell. arrays h h'. rewrite H2.
-        rewrite H0 in H. eauto with arith.
-      rewrite read_past_updated_cell; auto. arrays h h'. auto.
-  + arrays h h'. assumption.
-Qed.
-
 
 Next Obligation. 
   apply pred_and_stable.
@@ -1534,48 +1532,6 @@ Next Obligation. unfold Find_obligation_16. eauto. Qed.
 Lemma cellres : forall n, @res (cell n) local_imm local_imm _ = cell n.
 intros. simpl. reflexivity.
 Defined.
-
-
-
-(*
-Definition local_sort {n} i : hpred (uf n) :=
-  λ x h, 
-  (forall j, terminating_ascent n x h j) ->
-  getF (h[x<|i|>]) = i \/
-  (
-    getF (h[x<|i|>]) ≤ getF (h[x<| getF (h[x<|i|>]) |>]) /\
-    (@eq nat (getF (h[x<|i|>])) (getF (h[x<| getF (h[x<|i|>]) |>])) ->
-        proj1_sig (to_nat i) < proj1_sig (to_nat (getF (h[x<|i|>])))
-     )
-  ).
-Lemma stable_local_sort : forall n i, stable (local_sort i) (δ n).
-Proof.
-  intros. red. intros. unfold local_sort in *.
-  induction H0; intros.
-  + destruct H0. induction (H H0).
-    - induction (fin_dec _ f i).
-      subst f. rewrite read_updated_cell. right. arrays h h'.
-      destruct H2 as [Y [Hno _]].
-      assert ((getF (h'[c])) <> i). eapply no_chase_irrefl. eassumption.
-      rewrite read_past_updated_cell. firstorder. auto.
-      rewrite read_past_updated_cell; auto. arrays h h'. left; auto.
-    - induction (fin_dec _ f i). subst f. rewrite read_updated_cell.
-      destruct H2 as [Y [Hno _]]. arrays h h'.
-      assert ((getF (h'[c])) <> i). eapply no_chase_irrefl. eassumption.
-      right. rewrite read_past_updated_cell; auto.
-      destruct H6. right.
-      rewrite read_past_updated_cell. arrays h h'.
-      destruct H2 as [Y [Hno _]]. arrays h h'.
-      assert ((getF (h'[c])) <> f). eapply no_chase_irrefl. eassumption.
-      assert (forall X, 
-                @eq nat (getF (h'[(array_write x f c)<|X|>]))
-                        (getF (h'[x<|X|>]))).
-          intros. induction (fin_dec _ X f). subst X. rewrite read_updated_cell. auto.
-          rewrite read_past_updated_cell; auto.
-      rewrite H8. auto. auto.
-  + (* union *) 
-(*Hint Resolve stable_local_sort.*)
-    *)
  
 Next Obligation. (* δ *)
 
