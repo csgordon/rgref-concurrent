@@ -1588,7 +1588,7 @@ Next Obligation. (* δ *)
   
   assert (Htmp := heap_lookup2 h r). inversion Htmp; subst.
   
-  (* TODO: check out chase_rank, and chase_rank_strict, which will
+  (* chase_rank, and chase_rank_strict,  will
      directly give the rank/index comparisons for f0 and p.
      Combined with rank/index comparisons for p and gparent,
      that will give us the transitive results for two goals,
@@ -1630,20 +1630,7 @@ Next Obligation. (* δ *)
     destruct H3. destruct H3.
     rewrite pfgp in H3.
     destruct H3 as [Y' [HpY' HgpY']].
-    (* TODO: Y = set f and gparent belong to... Still need to prove
-       the negative conjunct, though, (not gparent-->f)!
-       How should we do this?  Note that the following tempting
-       predicate is *not* stable:
-           sameset_chasing a b ⊓ λ x h, ~chase n x h a b
-       I'm already working on proving the first conjunct
-       stable, and it looks completeable.  The second
-       conjunct is not stable; a parent getting bumped to point
-       past a grandparent right before a grandchild is bumped to
-       its grandparent is precisely why we can't just require
-       a chase from the updated index to the grandparent
-       in the compression case of δ.
-
-    *) 
+     
     assert (~chase _ (h[r]) h gparent f0).
         assert (H3 : True) by auto. (* filler for hoisted code *)
         intro.
