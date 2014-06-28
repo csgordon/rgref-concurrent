@@ -209,6 +209,28 @@ Proof.
   intros. induction H; try constructor.
   arrays h h'. eapply trans_chase; eauto.
 Qed.
+Lemma chase_dec : forall n x h i j, i≠j -> φ n x h -> chase n x h i j \/ ~chase n x h i j.
+Proof.
+  intros. generalize dependent j.
+  rename H0 into H.
+  intros j Hne.
+  induction H. intros.
+  induction (H i).
+  induction (fin_dec _ i j). subst j. left. constructor.
+                             right. intros Hbad. induction Hbad. contradiction b. auto.
+                             assert (i = t) by congruence. rewrite H2 in *. firstorder.
+  clear H1.
+  induction (fin_dec _ t j). subst j. 
+      left. eapply trans_chase; try constructor. symmetry; assumption.
+  induction (IHt b).
+  left. eapply trans_chase; eauto.
+  right.
+  intro Hbad. apply H1. 
+  clear IHt H1.
+  inversion Hbad. subst j. contradiction Hne; eauto.
+  subst j. unfold fin in *.
+  fcong t1 t. assumption.
+Qed.
 Lemma chase_step : forall n x h a b c,
                      chase n x h a c -> a ≠ c -> getF(h[x<|a|>])=b -> chase n x h b c.
 Proof. intros.
@@ -218,9 +240,32 @@ Proof. intros.
        induction (fin_dec _ b f). subst f. constructor.
        firstorder.
 Qed.
+Lemma chase_dec': forall n x h i j, φ n x h -> chase n x h i j \/ ~chase n x h i j.
+Proof.
+  intros. induction (fin_dec _ i j). subst. left. constructor.
+  apply chase_dec; eauto.
+Qed.
+Lemma chase_two_ordering : forall n x h a b c, chase n x h a b ->
+                            chase n x h a c ->
+                            chase n x h b c \/ chase n x h c b.
+Proof.
+  intros.
+
+  generalize dependent c.
+  induction H.
+  + firstorder.
+  + intros. induction H1.
+    - right. eapply trans_chase; eauto.
+    - fcong t0 t.
+      apply IHchase. assumption.
+Qed.
 Lemma no_chase_step : forall n x h a b c,
                         ~chase n x h a c -> a≠c -> getF(h[x<|a|>])=b -> ~chase n x h b c.
 Proof. intros. intro Hbad. apply H. eapply trans_chase; eauto. Qed.
+Lemma no_chase_irrefl : forall n x h i j, ~chase n x h i j -> i ≠ j.
+Proof. intros. intro Hbad. subst. apply H. constructor. Qed.
+Lemma no_chase_irrefl' : forall n x h i j, ~chase n x h i j -> j ≠ i.
+Proof. intros. intro Hbad. subst. apply H. constructor. Qed.
 
 Lemma sort_equiv_rank : forall n x h,
                           (forall i, terminating_ascent n x h i) ->
@@ -279,32 +324,7 @@ Proof.
   etransitivity; try apply IHchase; eauto. rewrite <- H4. assumption.
 Qed.
 
-Lemma chase_dec : forall n x h i j, i≠j -> φ n x h -> chase n x h i j \/ ~chase n x h i j.
-Proof.
-  intros. generalize dependent j.
-  rename H0 into H.
-  intros j Hne.
-  induction H. intros.
-  induction (H i).
-  induction (fin_dec _ i j). subst j. left. constructor.
-                             right. intros Hbad. induction Hbad. contradiction b. auto.
-                             assert (i = t) by congruence. rewrite H2 in *. firstorder.
-  clear H1.
-  induction (fin_dec _ t j). subst j. 
-      left. eapply trans_chase; try constructor. symmetry; assumption.
-  induction (IHt b).
-  left. eapply trans_chase; eauto.
-  right.
-  intro Hbad. apply H1. 
-  clear IHt H1.
-  inversion Hbad. subst j. contradiction Hne; eauto.
-  subst j. unfold fin in *.
-  fcong t1 t. assumption.
-Qed.
-Lemma no_chase_irrefl : forall n x h i j, ~chase n x h i j -> i ≠ j.
-Proof. intros. intro Hbad. subst. apply H. constructor. Qed.
-Lemma no_chase_irrefl' : forall n x h i j, ~chase n x h i j -> j ≠ i.
-Proof. intros. intro Hbad. subst. apply H. constructor. Qed.
+
 
 (* When chase_dec deduces a certain index doesn't chase a path to the updated
    array index, we simply recycle the old ascent proof *)
@@ -1030,10 +1050,15 @@ Definition uf_fielding : forall n f, FieldType (uf n) (t n) f (ref{cell n|any}[l
   unfold uf. intros. apply @array_field_index.
 Defined.
 
-Lemma chase_dec': forall n x h i j, φ n x h -> chase n x h i j \/ ~chase n x h i j.
+
+Lemma chase_append : forall n x h a b c,
+                       chase n x h a b ->
+                       chase n x h b c ->
+                       chase n x h a c.
 Proof.
-  intros. induction (fin_dec _ i j). subst. left. constructor.
-  apply chase_dec; eauto.
+  intros.
+  induction H. assumption.
+  eapply trans_chase. apply IHchase. assumption. assumption.
 Qed.
 
 Definition sameset_chasing {n:nat} i j : hpred (uf n) :=
@@ -1141,9 +1166,93 @@ Proof.
                       rewrite read_past_updated_cell. arrays h h'. auto.
                     assumption.
 
-        admit.
-
-
+        
+        
+        assert (chase n (array_write x f c) h' (getF (h[c])) Y').
+            clear H2 H3 H4 H5.
+            induction HcY'. constructor.
+            eapply trans_chase.
+            eapply IHHcY'. 
+            eapply no_chase_step; eauto. eapply no_chase_irrefl; auto.
+            eassumption.
+            assumption.
+            eapply no_chase_step; eauto. eapply no_chase_irrefl; auto.
+            eassumption.
+            rewrite read_past_updated_cell. arrays h' h; auto.
+            assert (i0 <> f). eauto using no_chase_irrefl.
+            solve[auto].
+        assert (chase n (array_write x f c) h' f Y').
+            eapply trans_chase; eauto. arrays h h'. reflexivity.
+        assert (forall q, chase n x h q f -> chase n (array_write x f c) h' q f).
+            clear H1 H8 H9 H7 H6 H4 H3 H2 H5 HcY' HfY' Hnochase H0.
+            intros. induction H0. constructor.
+            induction (fin_dec _ f i0). subst i0. constructor.
+            eapply trans_chase; eauto.
+            rewrite read_past_updated_cell; auto. arrays h h'. auto.
+            
+        
+        induction (chase_dec' n x h i f); try eassumption;
+            induction (chase_dec' n x h j f); try eassumption.
+        - (* Both hit f *)
+          assert (chase n x h f Y \/ chase n x h Y f). eauto using chase_two_ordering.
+          assert (chase n x h f Y). induction H13. assumption. exfalso. solve[auto].
+          clear H13.
+          (* f->Y *) exists Y'. split; eapply chase_append; eauto.
+        - (* i->f, not j->f.
+             not Y->f, so f->Y.
+             f->Y and f->Y', so Y->Y' or Y'->Y.
+             if Y->Y', ex Y', use i->f+f->Y', j->Y+Y->Y'.
+             Otherwise Y'->Y:
+                 Since gp->Y', gp->Y'->Y.
+                 So, j->Y, i->f->gp->Y'->Y, not j->f
+                     ex Y, use i->f->gp->Y'->Y, j->Y. *)
+          assert (chase n x h f Y \/ chase n x h Y f). eauto using chase_two_ordering.
+          assert (chase n x h f Y). induction H13. assumption. exfalso. solve[auto].
+          assert (chase n x h Y Y' \/ chase n x h Y' Y). eauto using chase_two_ordering.
+          assert (forall q z, chase n x h q z -> ~chase n x h q f ->
+                              chase n (array_write x f c) h' q z).
+              clear H0 Hnochase HcY' HfY' H2 H3 H4 H5 H6 H7.
+              intros. induction H0. constructor.
+                   
+                      eapply trans_chase.
+                      apply IHchase. eapply no_chase_step; eauto.
+                        eapply no_chase_irrefl. apply H2.
+                      rewrite read_past_updated_cell.
+                      arrays h h'. assumption.
+                      assert (i0 <> f) by eauto using no_chase_irrefl. auto.
+          induction H15.
+              exists Y'. split; eapply chase_append; eauto.
+              exists Y. split. 
+                               Focus 2. solve[eauto].
+                               eapply chase_append. 
+                               eapply H10. assumption.
+                               eapply trans_chase.
+                                   Focus 2. arrays h h'. reflexivity. arrays h h'. 
+                                            eapply chase_append. eassumption.
+                                   eapply H16. assumption.
+                                   intros Hbad.
+                                   assert (Y' = f). eapply Hdouble. destruct H. eassumption.
+                                       assumption. assumption.
+                                   subst Y'.
+                                   apply H7. eapply chase_append.
+                                     apply HcY'. apply H15.
+          - (* j->f, not i->f.  Dual of previous... *) admit.
+          - (* neither i nor j is affected. *)
+            exists Y. 
+          assert (forall q z, chase n x h q z -> ~chase n x h q f ->
+                              chase n (array_write x f c) h' q z).
+              clear H0 Hnochase HcY' HfY' H2 H3 H4 H5 H6 H7.
+              intros. induction H0. constructor.
+                   
+                      eapply trans_chase.
+                      apply IHchase. eapply no_chase_step; eauto.
+                        eapply no_chase_irrefl. apply H2.
+                      rewrite read_past_updated_cell.
+                      arrays h h'. assumption.
+                      assert (i0 <> f) by eauto using no_chase_irrefl. auto.
+                                
+           eauto.
+          
   + (* union *) 
     exists Y.
     assert (forall q, q<>x ->
@@ -1395,29 +1504,7 @@ Lemma cellres : forall n, @res (cell n) local_imm local_imm _ = cell n.
 intros. simpl. reflexivity.
 Defined.
 
-Lemma chase_two_ordering : forall n x h a b c, chase n x h a b ->
-                            chase n x h a c ->
-                            chase n x h b c \/ chase n x h c b.
-Proof.
-  intros.
 
-  generalize dependent c.
-  induction H.
-  + firstorder.
-  + intros. induction H1.
-    - right. eapply trans_chase; eauto.
-    - fcong t0 t.
-      apply IHchase. assumption.
-Qed.
-Lemma chase_append : forall n x h a b c,
-                       chase n x h a b ->
-                       chase n x h b c ->
-                       chase n x h a c.
-Proof.
-  intros.
-  induction H. assumption.
-  eapply trans_chase. apply IHchase. assumption. assumption.
-Qed.
 
 (*
 Definition local_sort {n} i : hpred (uf n) :=
