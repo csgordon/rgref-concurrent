@@ -1,5 +1,5 @@
 Require Import RGref.DSL.DSL.
-Require Import MonotonicCounter.
+Require Import AtomicCounter.
 Require Import Utf8.
 Require Import Coq.Relations.Relations.
 

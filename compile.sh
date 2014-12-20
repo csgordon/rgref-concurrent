@@ -7,7 +7,7 @@ export EXAMPLES="AppendOnlyLinkedList.v MonotonicCounter.v PrependOnlyPureList.v
 export CONC_EXAMPLES="AtomicCounter.v TrieberStack.v MichaelScottQ.v Hindsight.v UnionFind.v"
 export BUGS="KnownUnsoundnessExamples.v"
 export TMP="Tracing.v"
-coq_makefile -R RGref RGref $TMP $AUX $CORE $EXAMPLES $CONC_EXAMPLES $BUGS > Makefile
+coq_makefile -R RGref RGref $TMP $AUX $CORE $CONC_EXAMPLES > Makefile
 touch .depend
 make depend
 make -j `nproc`

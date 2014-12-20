@@ -331,15 +331,18 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
   Program Definition locate {Γ} (l:hindsight_list) (k:⊠) : rgref Γ (eptr * eptr) Γ :=
     observe-field l --> head as H, pH in (λ a h, (getF (FieldType:=hlb_head) a) = H);
     observe-field l --> tail as T, pT in (λ a h, (getF (FieldType:=hlb_tail) a) = T);
-    E_rect' (!H) (fun _ => rgref Γ (eptr * eptr) Γ)
+    H0 <- !H ;
+    E_rect' (H0) (fun _ => rgref Γ (eptr * eptr) Γ)
            (fun n m next pf => match next with
                                 | None => False_rect _ _ (* TODO: Contradiction *)
                                 | Some tl =>
                                   RGFix _ _
                                         (fun rec x =>
                                            match x with
-                                           | (p, c) => if ((c ~> data) ≪≪ k)
-                                                       then rec (c, opt_coerce (c ~> nxt) _) (* k ≪≪ ∞ so not None *)
+                                           | (p, c) => d <- (c ~> data);
+                                                       if (d ≪≪ k)
+                                                       then (nx <- (c ~> nxt);
+                                                             rec (c, opt_coerce nx _)) (* k ≪≪ ∞ so not None *)
                                                        else rgret (p, c)
                                            end
                                         )
@@ -373,7 +376,8 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
 
   Program Definition contains {Γ} (l:hindsight_list) (k:⊠) : rgref Γ bool Γ :=
     pc <- locate l k;
-    rgret (inf_eqb (valOfE (!(snd pc))) k).
+    n <- !(snd pc);
+    rgret (inf_eqb (valOfE (n)) k).
 
 (*
     contains : hindsight-list → ⊠ → ● Bool
@@ -424,7 +428,8 @@ Axiom ii_lt_trans : forall x y z, x << y -> y << z -> x << z.
                  pc <- locate l k;
                  match pc with
                  | (p, c) =>
-                   if inf_eqb (c ~> data) k (* c.k == k *)
+                   d <- (c ~> data);
+                   if inf_eqb d k (* c.k == k *)
                    then rgret false
                    else (
                           (* Unreasonable pseudocode from PODC paper:

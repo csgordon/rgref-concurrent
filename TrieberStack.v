@@ -68,7 +68,7 @@ Program Definition alloc_ts {Γ} (u:unit) : rgref Γ ts Γ :=
 (** *** Push operation *)
 Program Definition push_ts {Γ} : ts -> nat -> rgref Γ unit Γ :=
   RGFix2 _ _ _ (fun rec s n =>
-    let tl := !s in
+    tl <- !s;
     (* Eventually, lift allocation out of the loop, do substructural
        allocation, and strongly update tail until insertion *)
     new_node <- Alloc (mkNode n tl);
@@ -88,9 +88,12 @@ Next Obligation. (* local identity constraint stable wrt local_imm *)
 Next Obligation.
   compute; eauto. Qed.
 Next Obligation. (* Guarantee satisfaction! *)
-  unfold push_ts_obligation_8.
-  eapply ts_push. rewrite <- convert_equiv.
-  apply (@heap_lookup2 _ (fun v h => v=mkNode n (!s))).
+  eapply ts_push.  rewrite <- convert_equiv.
+  Check @heap_lookup2.
+  assert (tmp := @heap_lookup2 _ (fun v _ => v=mkNode n ((h[s]))) local_imm local_imm h new_node).
+  simpl in tmp.
+  rewrite <- tmp. unfold ts in s.
+  (* type based non-aliasing...*) admit.
 Qed.
 
 (** *** Pop operation *)
@@ -116,7 +119,8 @@ Notation "'fmatch' r ≫ f 'fwith' | 'None' [[ Pn ]] ==> N | 'Some' x [[ Ps ]] =
 Local Obligation Tactic := intros; compute; try subst; intuition; eauto with typeclass_instances.
 Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec s =>
-    match !s with
+    head <- !s;
+    match head with
     | None => rgret None
     | Some hd => 
                  observe-field hd --> val as n, pf in (fun a h => @eq nat (getF a) n);
@@ -149,7 +153,6 @@ Next Obligation. (* refining hd stability *)
   intros. subst. auto.
 Defined.
 Next Obligation. (** Guarantee Satisfaction *)
-  clear Heq_anonymous. (* spurious - and dangerous - extra assumption from Program extension *)
   eapply ts_pop. 
   assert (field_inj : forall nd, nd = mkNode (getF nd) (getF nd)).
       intros. destruct nd. reflexivity.

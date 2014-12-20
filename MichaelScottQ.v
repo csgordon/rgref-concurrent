@@ -202,7 +202,8 @@ Next Obligation. destruct (validity (mkNode 0 None) h). apply H1; constructor. Q
 (** *** Dequeue operation *)
 Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec q =>
-    match !q with
+    q' <- !q;
+    match q' with
     | mkMSQ sent =>
       observe-field sent --> val as x, pf in (fun a h => @eq nat (getF a) x);
       observe-field sent --> next as o, pf' 
@@ -212,7 +213,7 @@ Program Definition dq_msq {Γ} (q:msq) : rgref Γ (option nat) Γ :=
       match o with
       | None => rgret None
       | Some hd => 
-            n <- rgret (hd ~> val);
+            n <- (hd ~> val);
             success <- CAS(q,mkMSQ sent,mkMSQ hd);
             if success then rgret (Some n) else rec q
       end
@@ -270,8 +271,11 @@ Qed.
 Local Obligation Tactic := intros; eauto with typeclass_instances; repeat constructor; compute; eauto.
 (** *** Enqueue operation *)
 Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
+  q0 <- !q ;
   RGFix _ unit (fun loop tl =>
-                  best_tl <- (RGFix _ _ (fun chase tl => match (tl ~> next) with None => rgret tl | Some tl' => chase tl' end) tl) ;
+                  best_tl <- (RGFix _ _ (fun chase tl =>
+                                           nxt <- (tl ~> next); 
+                                           match nxt with None => rgret tl | Some tl' => chase tl' end) tl) ;
                   _ <- (LinAlloc[VZero] (mkNode n None) ) ;
                   (* Really need a refining fCAS, which returns either a success indicator or
                      a refinement of the r:ref{A|P}[R,G] with refinement P' such that
@@ -279,9 +283,9 @@ Program Definition nq_msq {Γ} (q:msq) (n:nat) : rgref Γ unit Γ :=
                   (*success <- fCAS( best_tl → next , None, Some _ ) ;*)
                   success <- share_field_CAS'( best_tl → next , None, (fun tl => Some tl) , VZero , TFirst VZero _ _ , best_tl) ;
                   (* If the CAS failed, next is not None, but there isn't a great way to extract the Some arg *)
-                  if success then rgret tt else loop (best_tl ~> next)
+                  if success then rgret tt else (l <- (best_tl ~> next); loop l)
                )
-        (match !q with mkMSQ sentinel => sentinel end).
+        (match q0 with mkMSQ sentinel => sentinel end).
 Next Obligation.  intros; congruence. Qed.
 Next Obligation. intros; subst. destruct H0. subst. destruct (validity (mkNode n None) h). apply H2. constructor. Qed.
 Next Obligation. 

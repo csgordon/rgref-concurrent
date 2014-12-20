@@ -174,32 +174,6 @@ Class Containment (A:Set) := {
   contains : forall (R:hrel A), Prop
 }.
 
-(* TODO: relation folding on heap reads, and enforcing that G is reflexive/permits reads! *)
-(** Ideally deref would have the type
-<<
-forall {A:Set}`{rel_fold A}{P:hpred A}{R G:hrel A}, hreflexive G -> ref A P R G -> rgfold R G.
->>
-But unforunately, Coq's default type conversion procedure doesn't fully reduce the rgfold instance,
-which in most cases is reduced naturally by
-<<
-cbv iota delta beta
->>
-But that reduction is stronger than default conversion (at least in 8.3... still building 8.4).
-*)
-Axiom deref : forall {A:Set}{B:Set}{P:hpred A}{R G:hrel A}`{readable_at A R G}, hreflexive G -> res = B -> ref A P R G -> B.
-(*Axiom deref : forall {A:Set}{P:hpred A}{R G:hrel A}, ref A P R G -> A.*)
-Notation "! e" := (deref _ _ e) (at level 30). (* with reflexivity, add an _ in there *)
-
-(* This axiom asserts that all folds that produce the same result type operate equally on
-   the underlying values. This is fragile if a developer specifies multiple instances for
-   folding the same type.  This is a weaker version of a more general axiom that
-   the relationship between the results of folds of different result types depends on the
-   relationship between results of the fold members of the instances when applied to the
-   same value.  This version is really only useful for equating identity folds with
-   the identity meta_fold instance results. *)
-Axiom deref_conversion : forall (A B:Set) P R G RA1 RA2 rf1 rf2 fe1 fe2,
-                         @deref A B P R G RA1 rf1 fe1 = @deref A B P R G RA2 rf2 fe2.
-
 Axiom ptr_eq_deref : forall A P P' R R' G G' h (p:ref{A|P}[R,G]) (r:ref{A|P'}[G',R']), p≡r -> h[p]=h[r].
 Hint Resolve ptr_eq_deref.
 Axiom ptr_eq_update : forall A P P' R R' G G' (p:ref{A|P}[R,G]) (r:ref{A|P'}[G',R']),
@@ -318,6 +292,11 @@ Axiom convert : forall {A:Set}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachab
 Axiom convert_equiv : forall {A}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A}
                              (r:ref{A|P}[R,G]) pfP pfG pfR stab splt prP prR prG,
                              forall h, h[r]=h[@convert A P P' R R' G G' _ r pfP pfG pfR stab splt prP prR prG].
+Axiom convert_equiv2 : forall {A}{P P':hpred A}{R R' G G':hrel A}`{ImmediateReachability A}
+                             (r:ref{A|P}[R,G]) pfP pfG pfR stab splt prP prR prG,
+                             forall v h, 
+                                heap_write r v h = heap_write (@convert A P P' R R' G G' _ r pfP pfG
+                                pfR stab splt prP prR prG) v h.
 Program Definition convert_P {A:Set}{P P':hpred A}{R G}`{ImmediateReachability A} 
                              (impl:forall v h, P v h -> P' v h)
                              (prec:precise_pred P') (stbl:stable P' R) (r:ref{A|P}[R,G]) : ref{A|P'}[R,G] :=
@@ -347,13 +326,3 @@ Lemma conversion_P_refeq : forall h A (P P':hpred A) (R G:hrel A)`{ImmediateReac
 Proof. intros. unfold convert_P. symmetry. eapply convert_equiv.
 Qed.
 
-Axiom refine_ref : forall {A:Set}{P P' R G}{fld : readable_at A R G}{rfl : hreflexive G}
-                   (r : ref{A|P}[R,G])
-                   (x : res),
-                   stable P' R ->
-                   ((@deref _ _ _ _ _ fld rfl (eq_refl) r) = x) -> (* <-- This is only available in special match statements, and flow is restricted! *)
-                   (forall h, (dofold (h[r]))=(deref rfl (eq_refl) r) -> (deref rfl eq_refl r) = x -> P (h[r]) h -> P' (h[r]) h) ->
-                   ref{A|P'}[R,G].
-Axiom refinement_equiv : forall {A P P' R G}{fld : readable_at A R G}{rfl : hreflexive G}
-                                (r:ref{A|P}[R,G]) x stab pf refpf,
-                                forall h, h[r] = h[@refine_ref A P P' R G fld rfl r x stab pf refpf].

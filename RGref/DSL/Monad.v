@@ -59,18 +59,43 @@ Axiom dropvar : forall {Δ} (v:var) (t:Set) (tm:tymember v t Δ), rgref Δ unit 
     in general.  Eventually both store and write will need to take rel_fold A instances so they can use them in proofs
     and obligation statements.
 *)
+
+(** Ideally deref would have the type
+<<
+forall {A:Set}`{rel_fold A}{P:hpred A}{R G:hrel A}, hreflexive G -> ref A P R G -> rgfold R G.
+>>
+But unforunately, Coq's default type conversion procedure doesn't fully reduce the rgfold instance,
+which in most cases is reduced naturally by
+<<
+cbv iota delta beta
+>>
+But that reduction is stronger than default conversion (at least in 8.3... still building 8.4).
+*)
+Axiom mderef : forall {A:Set}{B:Set}{P:hpred A}{R G:hrel A}`{readable_at A R G}, hreflexive G -> res = B -> ref A P R G -> forall {E}, rgref E B E.
+(*Axiom deref : forall {A:Set}{P:hpred A}{R G:hrel A}, ref A P R G -> A.*)
+Notation "! e" := (mderef _ _ e) (at level 30). (* with reflexivity, add an _ in there *)
+
+(* This axiom asserts that all folds that produce the same result type operate equally on
+   the underlying values. This is fragile if a developer specifies multiple instances for
+   folding the same type.  This is a weaker version of a more general axiom that
+   the relationship between the results of folds of different result types depends on the
+   relationship between results of the fold members of the instances when applied to the
+   same value.  This version is really only useful for equating identity folds with
+   the identity meta_fold instance results. *)
+Axiom mderef_conversion : forall (A B:Set) P R G RA1 RA2 rf1 rf2 fe1 fe2,
+                         @mderef A B P R G RA1 rf1 fe1 = @mderef A B P R G RA2 rf2 fe2.
+
+
+
 (** TODO: Fix store to work properly with the linear environment. *)
 Program Definition asB T R G B `{readable_at T R G} (pf:res = B) (b:res) : B.
 intros. rewrite pf in b. exact b. Defined.
 
 Program Axiom store : forall {Δ:tyenv}{A:Set}{P R G}`{readable_at A R G}`{res=A}`{hreflexive G}
                              (x:ref{A|P}[R,G])(e:A)
-                             (guar:(forall (h:heap)
-                                           (fold_commutes : forall T P R G (r:ref{T|P}[R,G]) B (rf:readable_at T R G) rpf (epf:res=B),
-                                                              deref rpf epf r = asB epf (dofold (h[r]))
-                                           ),
-                                      P (!x) h -> G (!x) e h (heap_write x e h)))
-                             (pres:(forall h, P (!x) h -> P e (heap_write x e h))),
+                             (guar:(forall (h:heap),
+                                      P (h[x]) h -> G (h[x]) e h (heap_write x e h)))
+                             (pres:(forall h, P (h[x]) h -> P e (heap_write x e h))),
                                       rgref Δ unit Δ.
 Notation "[ x ]:= e" := (@store _ _ _ _ _ _ _ _ x e _ _) (at level 70).
                                     

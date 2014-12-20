@@ -1293,7 +1293,7 @@ Program Definition UpdateRoot {Γ n} (A:ref{uf (S n)|φ _}[δ _, δ _]) (x:Fin.t
                     (newrank=oldrank/\newrank ≤ getF (f:=rank)(FT:=nat) (h[h[A]<|y|>])
                      /\ (newrank = getF(f:=rank)(FT:=nat)(h[h[A]<|y|>]) -> fin_lt x y = true)))
 : rgref Γ bool Γ :=
-  old <- rgret (A ~> x) ;
+  old <- (A ~> x) ;
   observe-field-explicit cell_parent for old --> parent as oparent, pfp in (λ x h, getF x = oparent);
   observe-field-explicit (@cell_rank (S n)) for old --> rank as orank, pfp in (λ x h, getF x = orank);
   match (orb (negb (fin_beq oparent (*old ~> parent*) x))
@@ -1832,7 +1832,9 @@ Program Definition Sameset {Γ n} (A:ref{uf (S n)|φ _}[δ _,δ _]) (x y:Fin.t (
                y <- Find A y;
                if (fin_beq x y)
                then rgret true
-               else (if fin_beq ((@field_read _ _ _ _ _ _ _ _ (@uf_folding _) _ A x _ (@array_field_index _ _ x)) ~> parent) x
+               else (c <- (@mfield_read _ _ _ _ _ _ _ _ (@uf_folding _) _ A x _ (@array_field_index _ _ x)) _;
+                     p <- (c ~> parent);
+                     if fin_beq p x
                      then @rgret Γ _ false
                      else TryAgain tt)
             ) tt.

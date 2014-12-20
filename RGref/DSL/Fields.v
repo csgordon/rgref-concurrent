@@ -13,14 +13,14 @@ Class FieldType (T : Set) (F : Set) `{FieldTyping T F} (f:F) (FT : Set) := {
 }.
 
 (* Field-aware heap access primitives *)
-Axiom field_read : forall {T B F Res:Set}{P R G}`{readable_at T R G}
+Axiom mfield_read : forall {T B F Res:Set}{P R G}`{readable_at T R G}
                           `{res = B}
                           `{hreflexive G}
                           (r:ref{T|P}[R,G]) (f:F)
                           `{FieldType B F f Res},
-                          Res.
+                          forall E, rgref E Res E.
 
-Notation "x ~> f" := (@field_read _ _ _ _ _ _ _ _ _ _ x f _ _) (at level 50).
+Notation "x ~> f" := (@mfield_read _ _ _ _ _ _ _ _ _ _ x f _ _ _) (at level 50).
 
 Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:readable_at T R G}
                            (r:ref{T|P}[R,G]) (f:F) (e : Res)
@@ -28,9 +28,10 @@ Axiom field_write : forall {Γ}{T F Res:Set}{P R G}{folder:readable_at T R G}
                            {ft:FieldType T F f Res}
                            `{forall h v, 
                                P v h -> 
-                               (forall Post ft' fte' (pf1:res = Post) pf2 x y,
+                               (*(forall Post ft' fte' (pf1:res = Post) pf2 x y,
                                    @field_read T Post F Res P R G folder pf1 pf2 r f x y =
-                                   @getF res F ft' f Res fte' (dofold v)) ->
+                                   @getF res F ft' f Res fte' (dofold v)) ->*)
+                               h[r]=v ->
                                G v (@setF T F _ f Res ft v e) h (heap_write r (@setF T F _ f Res ft v e) h)},
                            rgref Γ unit Γ.
 
@@ -40,7 +41,7 @@ Notation "{[ x ~~> f ]}:= e" := (@field_write _ _ _ _ _ _ _ _ x f e _ _ _) (at l
 Axiom immutable_fields : 
   forall T F H f FT FTT P (r:ref{T|P}[local_imm,local_imm]) h h',
     @getF T F H f FT FTT (h[r]) = @getF T F H f FT FTT (h'[r]).
-Axiom field_projection_commutes : 
+(*Axiom field_projection_commutes : 
     forall h F T P R G Res (r:ref{T|P}[R,G]) f
            (rf:readable_at T R G) (rgf:res = T) (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
       @eq Res (@getF T F _ f _ _ (eq_rec _ (fun x => x) (@dofold T R G rf (h[r])) T rgf))
@@ -52,7 +53,7 @@ Axiom field_projection_commutes' :
            (hrg:hreflexive G) (ftg:FieldTyping T F) (ft:FieldType T F f Res),
       @eq Res (@getF T F _ f _ _ (h[r]))
               (@field_read T T F Res P R G rf rgf hrg r f ftg ft).
-
+*)
 (* TODO: these may not work so well for types w/ multiple fields of same type, e.g. 2 nat fields *)
 Notation "'field_inj1' ctor" := (forall x, x = ctor (getF x)) (at level 30).
 Notation "'field_inj2' ctor" := (forall x, x = ctor (getF x) (getF x)) (at level 30).
@@ -116,19 +117,14 @@ Section FieldDemo.
   }.
 
   Instance pureD : pure_type D.
-  Program Example demo {Γ} (r : ref{D|any}[deltaD,deltaD]) : rgref Γ unit Γ :=
+  (*Program Example demo {Γ} (r : ref{D|any}[deltaD,deltaD]) : rgref Γ unit Γ :=
     @field_write Γ D Dfield nat _ _ _ _ r Count ((@field_read _ D Dfield _ _ _ _ _ _ _ r Count _ _)+1) _ _ _.
   Next Obligation.
     unfold demo_obligation_1. unfold demo_obligation_2.
-(*    Check @getF.
-    cut (forall T B (v:B) F Res P R G folder pf1 pf2 r f fs fi ft ftb, 
-           @field_read T B F Res P R G folder pf1 pf2 r f fs fi = 
-                     @getF B F ft f Res ftb v).
-    intros Hfieldstuff.*)
     destruct v.
 (*    rewrite Hfieldstuff.*) erewrite H0.
     compute. fold plus. constructor. eauto with arith.
-  Qed.
+  Qed.*)
 End FieldDemo.
 
 
