@@ -71,7 +71,10 @@ Program Definition push_ts {Γ} : ts -> nat -> rgref Γ unit Γ :=
     tl <- !s;
     (* Eventually, lift allocation out of the loop, do substructural
        allocation, and strongly update tail until insertion *)
-    new_node <- Alloc (mkNode n tl);
+    (* For some reason the AllocNE notation isn't parsing here... *)
+    new_node_pf <- (allocne _ _ _ (mkNode n tl) _ _ _ _ _ _ s);
+    (*new_node_pf <- (AllocNE (mkNode n tl) s);*)
+    let (new_node, nn_ne_s) := new_node_pf in        
     success <- CAS(s,tl,Some (convert new_node (fun v h (pf:v=mkNode n tl) => I)
                                                (rel_sub_refl _ local_imm)
                                                (rel_sub_refl _ local_imm) _ 
@@ -93,7 +96,8 @@ Next Obligation. (* Guarantee satisfaction! *)
   assert (tmp := @heap_lookup2 _ (fun v _ => v=mkNode n ((h[s]))) local_imm local_imm h new_node).
   simpl in tmp.
   rewrite <- tmp. unfold ts in s.
-  (* type based non-aliasing...*) admit.
+  (* We know new_node and s are not equal, since we allocated new_node with AllocNE while s existed *)
+  apply non_ptr_eq_based_nonaliasing. assumption.
 Qed.
 
 (** *** Pop operation *)
