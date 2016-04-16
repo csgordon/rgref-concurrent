@@ -82,7 +82,7 @@ Axiom rgref_exchange : forall τ P P' R R' G G', P ≡p P' -> R ⊆⊇ R' -> G �
 
 Axiom type_based_nonaliasing : forall h τ σ P R G Q R' G' `(a:ref{τ|P}[R,G]) `(b:ref{σ|Q}[R',G']) v, τ<>σ ->
   (heap_write a v h)[b] = h[b].
-Axiom non_ptr_eq_based_nonaliasing : forall h τ P R G Q R' G' (a:ref{τ|P}[R,G]) (b:ref{τ|Q}[R',G']) v,
+Axiom non_ptr_eq_based_nonaliasing : forall h τ τ' P R G Q R' G' (a:ref{τ|P}[R,G]) (b:ref{τ'|Q}[R',G']) v,
   (~ (b ≡ a)) ->
   (heap_write a v h)[b] = h[b].
 

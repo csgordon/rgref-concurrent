@@ -178,6 +178,21 @@ Axiom alloc : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}
                 G ⊆ R ->             (* self-splitting *)
                 rgref Δ (ref{T|P}[R,G]) Δ.
 Notation "'Alloc' e" := (alloc _ _ _ e _ _ _ _ _ _) (at level 70).
+
+(** Sometimes it is useful to know explicitly that some other reference from before allocation is
+    not equal to the fresh allocation *)
+Axiom allocne : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}
+                     P R G {FT:readable_at T R G} (e:T), 
+                stable P R ->        (* predicate is stable *)
+                (forall h, P e h) -> (* predicate is true *)
+                precise_pred P ->    (* P precise *)
+                precise_rel R ->     (* R precise *)
+                precise_rel G ->     (* G precise *)
+                G ⊆ R ->             (* self-splitting *)
+                forall {A' P' G' R'} (old : ref{A'|P'}[R',G']),
+                rgref Δ (sigT (fun (r:(ref{T|P}[R,G])) => (~(r ≡ old))) ) Δ.
+Notation "'AllocNE' e r" := (allocne _ _ _ e _ _ _ _ _ _ r) (at level 65).
+
 (** Sometimes it is useful to refine P to give equality with the allocated value, which
     propagates assumptions and equalities across "statements." *)
 Axiom alloc' : forall {Δ}{T:Set}{RT:ImmediateReachability T}{CT:Containment T}
