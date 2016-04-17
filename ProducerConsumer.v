@@ -1,5 +1,6 @@
 Require Import RGref.DSL.DSL.
 Require Import RGref.DSL.Concurrency.
+Require Import RGref.DSL.Fields.
 Require Import TrieberStack.
 Require Import Utf8.
 
@@ -54,12 +55,29 @@ Program Definition consumer_of_ts (s : ts) : consumer :=
 Program Definition producer_of_ts (s : ts) : producer :=
   convert s _ _ _ _ _ _ _ _.
 
+Definition isSome {T:Set}(o:option T) : Set := match o with None => False | _ => True end.
+Lemma optionNotNode : forall (T:Set), option T <> Node.
+  assert (Hiso : forall (T U : Set), T = U ->
+                                     exists (f:T->U) (g:U->T), (forall t, g (f t) = t) /\ (forall u, f (g u) = u)).
+  { intros. subst T. exists id. exists id. eauto. }
+  intros T Hbad.
+  specialize (Hiso (option T) Node Hbad).
+  destruct Hiso. destruct H. destruct H.
+  assert (forall m n o, x0 m = x0 n \/ x0 n = x0 o \/ x0 m = x0 o).
+  { intros. induction (x0 m) eqn:Hm; induction (x0 n) eqn:Hn; induction (x0 o) eqn:Ho; eauto.
+    destruct m. destruct o0. destruct r.
+  Admitted.
+Reset optionNotNode.
+Axiom optionNotNode : option (ref{Node | any }[ local_imm, local_imm]) ≠ Node.
 Program Definition push_producer {Γ} : producer -> nat -> rgref Γ unit Γ :=
   RGFix2 _ _ _ (fun rec s n =>
     tl <- !s;
     (* Eventually, lift allocation out of the loop, do substructural
        allocation, and strongly update tail until insertion *)
-    new_node <- Alloc (mkNode n tl);
+    (* For some reason the AllocNE notation isn't parsing here... *)
+    new_node_pf <- (allocne _ _ _ (mkNode n tl) _ _ _ _ _ _ s);
+    (*new_node_pf <- (AllocNE (mkNode n tl) s);*)
+    let (new_node, nn_ne_s) := new_node_pf in
     success <- CAS(s,tl,Some (convert new_node (fun v h (pf:v=mkNode n tl) => I)
                                                (rel_sub_refl _ local_imm)
                                                (rel_sub_refl _ local_imm) _ 
@@ -81,7 +99,8 @@ Next Obligation. (* Guarantee satisfaction! *)
   assert (tmp := @heap_lookup2 _ (fun v _ => v=mkNode n ((h[s]))) local_imm local_imm h new_node).
   simpl in tmp.
   rewrite <- tmp. unfold ts in s.
-  (* type based non-aliasing... writing to a ref{option...} won't affect a ref{Node...} Should clean this up *) admit.
+  (* We know new_node and s are not equal, since we allocated new_node with AllocNE while s existed *)
+  apply non_ptr_eq_based_nonaliasing. assumption.
 Qed.
 
 
@@ -100,3 +119,22 @@ Program Definition pop_consumer {Γ} : consumer -> rgref Γ (option nat) Γ :=
                  success <- CAS(s,Some hd,tl');
                  if success then rgret (Some n) else rec s
     end).
+Next Obligation. (* options equivalent... *)
+  f_equal. intros. rewrite H. reflexivity.
+  eapply (rgref_exchange); try solve[compute; eauto].
+  split; red; intros. simpl in H. destruct H. eauto.
+  split; eauto. intros. constructor.
+Defined.
+Next Obligation. (* refining hd stability *)
+  intros. subst. auto.
+Defined.
+Next Obligation. (* refining hd stability *)
+  intros. subst. auto.
+Defined.
+Next Obligation. (** Guarantee Satisfaction *)
+  eapply consume_pop. 
+  assert (field_inj : forall nd, nd = mkNode (getF nd) (getF nd)).
+      intros. destruct nd. reflexivity.
+  rewrite (field_inj (h[hd])). rewrite pf. rewrite pf'. reflexivity.
+Qed.
+
