@@ -230,6 +230,9 @@ Axiom RGFix : forall { Δ Δ' }(t t':Set),
 Axiom RGFix2 : forall { Δ Δ' }(t t2 t':Set), 
     ((t -> t2 -> rgref Δ t' Δ') -> (t -> t2 -> rgref Δ t' Δ')) -> 
     t -> t2 -> rgref Δ t' Δ'.
+Axiom RGFixT2 : forall { Δ Δ' }(t t2:Type) (t':Set), 
+    ((t -> t2 -> rgref Δ t' Δ') -> (t -> t2 -> rgref Δ t' Δ')) -> 
+    t -> t2 -> rgref Δ t' Δ'.
 Axiom RGFix3 : forall { Δ Δ' }(t t2 t3 t':Set), 
     ((t -> t2 -> t3 -> rgref Δ t' Δ') -> (t -> t2 -> t3 -> rgref Δ t' Δ')) -> 
     t -> t2 -> t3 -> rgref Δ t' Δ'.
