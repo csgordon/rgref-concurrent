@@ -19,10 +19,8 @@ with deltaNode' : hrel Node :=
   | node_nil_refl : forall n h h',
                   deltaNode' (mkNode n None) (mkNode n None) h h'
   | node_tl_refl : forall n h h' tl,
-                   deltaNode' (h[tl]) (h'[tl]) h h' ->
                    deltaNode' (mkNode n (Some tl)) (mkNode n (Some tl)) h h'
   | node_append : forall n n' tl h h',
-                    (* Do I need this? h[tl]=(mkNode Node validNode R n' None) -> *)
                     h'[tl]=(mkNode n' None) ->
                     deltaNode' (mkNode n None)
                               (mkNode n (Some tl))
@@ -32,14 +30,6 @@ Axiom delta_eq : deltaNode ⊆⊇ deltaNode'.
 Axiom destruct_node : forall nd, exists n, exists tl, nd = mkNode n tl. (* destruction principle *)
 Axiom compute_node_rect : forall T B x tl, Node_rect T B (mkNode x tl) = B x tl. (* fake computation *)
 
-(* TODO: Figure out how to justify this with general principles.  It's sound here b/c we know
-   it's acyclic, but there should be an underlying general principle... Could just say it's true for
-   any recursive option member, for any T, works for [option ref{T...}]... No, that doesn't
-   prohibit cycles in the heap... This is actually reliant on a well-founded reachability
-   through the heap, which we know is true in this case.  *)
-Axiom Node_heap_rect : forall h (P:Node->Type), (forall n, P (mkNode n None)) ->
-                                                     (forall n r, P (h[r]) -> P (mkNode n (Some r))) ->
-                                                     forall n, P n.
 (** ** Field map for the M&S Queue *)
 Require Import RGref.DSL.Fields.
 
@@ -72,9 +62,8 @@ Axiom node_inj : forall n n' t t', mkNode n t = mkNode n' t' -> n=n' /\ t=t'.
 Lemma stable_node' : stable validNode' deltaNode'.
   compute; intros.
   induction H0; eauto; try constructor.
-      apply IHdeltaNode'. inversion H; subst. assert (Htmp := node_inj _ _ _ _ H2). destruct Htmp. inversion H3.
-                                              assert (Htmp := node_inj _ _ _ _ H1). destruct Htmp. inversion H4; subst. assumption.
-      rewrite H0. constructor.
+  apply validity.  eapply heap_lookup2.
+  rewrite H0. constructor.
 Qed.
 Hint Resolve stable_node'.
 
@@ -139,11 +128,6 @@ Hint Resolve precise_valid_node.
 Lemma precise_delta_node : precise_rel deltaNode'.
   compute; intros; intuition; eauto. induction H1; try constructor.
 
-  rewrite <- H. rewrite <- H0. apply IHdeltaNode'.
-  intros. apply H. eapply trans_reachable with (i := tl). constructor. assumption.
-  intros. apply H0. eapply trans_reachable with (i := tl). constructor. assumption.
-  constructor. constructor. constructor. constructor.
-
   eapply node_append.
   rewrite <- H0. eauto.
   constructor. constructor.
@@ -163,7 +147,8 @@ Qed.
 Hint Resolve precise_valid_node2 precise_delta_node2.
 Lemma delta_refl : hreflexive deltaNode.
 Proof. compute. intros. destruct delta_eq. apply H0. clear H; clear H0.
-       eapply (Node_heap_rect h (fun x => deltaNode' x x h h)); constructor; auto.
+    destruct (destruct_node x) as [n [tl Heq]].
+    rewrite Heq. destruct tl; constructor.
 Qed.
 Hint Resolve delta_refl.
 
