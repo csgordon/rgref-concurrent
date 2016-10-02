@@ -55,20 +55,6 @@ Program Definition consumer_of_ts (s : ts) : consumer :=
 Program Definition producer_of_ts (s : ts) : producer :=
   convert s _ _ _ _ _ _ _ _.
 
-Definition isSome {T:Set}(o:option T) : Set := match o with None => False | _ => True end.
-Lemma optionNotNode : forall (T:Set), option T <> Node.
-  assert (Hiso : forall (T U : Set), T = U ->
-                                     exists (f:T->U) (g:U->T), (forall t, g (f t) = t) /\ (forall u, f (g u) = u)).
-  { intros. subst T. exists id. exists id. eauto. }
-  intros T Hbad.
-  specialize (Hiso (option T) Node Hbad).
-  destruct Hiso. destruct H. destruct H.
-  assert (forall m n o, x0 m = x0 n \/ x0 n = x0 o \/ x0 m = x0 o).
-  { intros. induction (x0 m) eqn:Hm; induction (x0 n) eqn:Hn; induction (x0 o) eqn:Ho; eauto.
-    destruct m. destruct o0. destruct r.
-  Admitted.
-Reset optionNotNode.
-Axiom optionNotNode : option (ref{Node | any }[ local_imm, local_imm]) ≠ Node.
 Program Definition push_producer {Γ} : producer -> nat -> rgref Γ unit Γ :=
   RGFix2 _ _ _ (fun rec s n =>
     tl <- !s;

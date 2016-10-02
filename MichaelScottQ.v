@@ -64,7 +64,7 @@ Inductive msq_reach : forall {T:Set}{P R G} (p:ref{T|P}[R,G]) (a:Node), Prop :=
    into Type
   TODO: Simplify now that we're not using -impredicative-set *)
 Global Instance nd_reach : ImmediateReachability Node := {
-  imm_reachable_from_in := fun T P R G p a => msq_reach p a}.
+  imm_reachable_from_in := @msq_reach }.
 
 (** Still need one injectivity axiom to work around the impredicative set stuff... but this axiomatization
     actually should make the -impredicative-set flag unnecessary.  Might be worth converting the whole framework, though. *)
@@ -131,16 +131,8 @@ Lemma precise_valid_node : precise_pred validNode'.
   compute. intros; intuition; eauto. induction H; constructor.
   rewrite <- H0; try solve[repeat constructor]. 
   eapply IHvalidNode'. intros.
-  Require Import Coq.Program.Equality.
-  dependent induction H1.
-    (** Messy contradiction; dep. induction tried to use the reflexive reachability
-        for things w/ wrong types.  I suspect this would be a non-issue if
-        I could properly define Node with its predicates and relations as an
-        inductive-inductive datatype, as dependent induction doesn't typically
-        generate these kinds of obligations. *)
-    assert (ref{T|P'}[R',G'] = Node -> False) by admit. (*OK*) exfalso. firstorder.
-    eapply H0. eapply trans_reachable with (i := tl). constructor. eapply directly_reachable. assumption.
-    eapply H0. clear IHreachable_from_in. eapply trans_reachable with (i := tl). constructor. eapply trans_reachable with (i := i); eauto.
+  apply H0.
+  eapply trans_reachable with (i := tl). constructor. unfold nd_reach. assumption.
 Qed.
 Hint Resolve precise_valid_node.
 
