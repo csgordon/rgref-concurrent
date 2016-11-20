@@ -103,23 +103,6 @@ Qed.
 (** *** Pop operation *)
 
 Require Import Utf8.
-Axiom stable_option_match :
-  forall Γ T Γ' A P R G (r:ref{A|P}[R,G]) F f (FT:FieldTyping A F) 
-         (Fx:Set) (FTT:FieldType A F f (option Fx)) Pn Ps,
-         stable Pn R ->
-         (forall (x:Fx), stable (Ps x) R) ->
-         (forall x h, P x h -> @getF _ F FT f _ FTT x = None -> Pn x h) ->
-         (forall x h v, P x h -> getF x = Some v -> Ps v x h) ->
-         (forall (r':ref{A|Pn}[R,G]), r' ≡ r -> rgref Γ T Γ') ->
-         (forall n (r':ref{A|Ps n}[R,G]), r' ≡ r -> rgref Γ T Γ') ->
-         rgref Γ T Γ'.
-(* How do I generalize this a la Mtac? *)
-Notation "'fmatch' r ≫ f 'fwith' | 'None' [[ Pn ]] ==> N | 'Some' x [[ Ps ]] ==> S 'end'" :=
-  (stable_option_match _ _ _ _ _ _ _ r _ f _ _ _ Pn Ps _ _ _ _ 
-                       (fun r' requiv => N)
-                       (fun x r' requiv => S))
-    (at level 44).
-
 Local Obligation Tactic := intros; compute; try subst; intuition; eauto with typeclass_instances.
 Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
   RGFix _ _ (fun rec s =>
@@ -132,17 +115,6 @@ Program Definition pop_ts {Γ} : ts -> rgref Γ (option nat) Γ :=
                  observe-field hd --> nxt as tl', pf' in (fun a h => @eq (option _) (getF a) tl');
                  success <- CAS(s,Some hd,tl');
                  if success then rgret (Some n) else rec s
-                 (*match !hd with
-                   | mkNode n tl => 
-                       success <- CAS(s,Some hd,tl);
-                       if success then rgret (Some n) else rec s
-                 end*)
-                 (*fmatch hd ≫ nxt fwith (* Of course, we don't actually want to match on tl here... *)
-                  | None [[ any ]] ==> rgret None
-                  | Some tl [[ (λ x v h, getF v = Some x) ]] ==> 
-                        (success <- CAS(s,Some hd,tl);
-                         if success then rgret (Some _) else rec s)
-                  end*)
     end).
 Next Obligation. (* options equivalent... *)
   f_equal. intros. rewrite H. reflexivity.
